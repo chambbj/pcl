@@ -91,7 +91,6 @@ namespace pcl
         filename_ = filename;
       }
 
-
     protected:
       using PCLBase<PointT>::input_;
       using PCLBase<PointT>::indices_;
