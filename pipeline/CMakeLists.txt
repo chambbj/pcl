@@ -1,6 +1,6 @@
 set(SUBSYS_NAME pipeline)
 set(SUBSYS_DESC "Point cloud pipeline library")
-set(SUBSYS_DEPS common search kdtree octree)
+set(SUBSYS_DEPS common filters io search kdtree octree)
 
 set(build TRUE)
 PCL_SUBSYS_OPTION(build ${SUBSYS_NAME} ${SUBSYS_DESC} ON)
