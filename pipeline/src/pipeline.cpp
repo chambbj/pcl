@@ -2,8 +2,8 @@
  * Software License Agreement (BSD License)
  *
  *  Point Cloud Library (PCL) - www.pointclouds.org
- *  Copyright (c) 2010, Willow Garage, Inc.
- *  Copyright (c) 2012-, Open Perception, Inc.
+ *  Copyright (c) 2010-2013, Willow Garage, Inc.
+ *  Copyright (c) 2013-, RadiantBlue Technologies, Inc.
  *
  *  All rights reserved.
  *
@@ -38,7 +38,7 @@
  *
  */
 
-#include <pcl/filters/impl/pipeline.hpp>
+#include <pcl/pipeline/impl/pipeline.hpp>
 
 #ifndef PCL_NO_PRECOMPILE
 #include <pcl/impl/instantiate.hpp>
