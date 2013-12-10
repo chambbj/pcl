@@ -2,7 +2,8 @@
  * Software License Agreement (BSD License)
  *
  *  Point Cloud Library (PCL) - www.pointclouds.org
- *  Copyright (c) 2010-2012, Willow Garage, Inc.
+ *  Copyright (c) 2010-2013, Willow Garage, Inc.
+ *  Copyright (c) 2013-, RadiantBlue Technologies, Inc.
  *
  *  All rights reserved.
  *
@@ -40,7 +41,8 @@
 #ifndef PCL_FILTERS_IMPL_PIPELINE_HPP_
 #define PCL_FILTERS_IMPL_PIPELINE_HPP_
 
-#include <pcl/filters/pipeline.h>
+#include <pcl/io/pcd_io.h>
+#include <pcl/pipeline/pipeline.h>
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 template <typename PointT> void
@@ -64,7 +66,7 @@ pcl::Pipeline<PointT>::applyFilter (PointCloud &output)
   {
     output.is_dense = true;
     applyFilterIndices (indices);
-    copyPointCloud (*input_, indices, output);
+    pcl::copyPointCloud<PointT> (*input_, indices, output);
   }
 }
 
@@ -99,7 +101,7 @@ pcl::Pipeline<PointT>::applyFilterIndices (std::vector<int> &indices)
   {
     // Attempt to get the field name's index
     std::vector<pcl::PCLPointField> fields;
-    int distance_idx = pcl::getFieldIndex (*input_, filter_field_name_, fields);
+    int distance_idx = pcl::getFieldIndex<PointT> (*input_, filter_field_name_, fields);
     if (distance_idx == -1)
     {
       PCL_WARN ("[pcl::%s::applyFilter] Unable to find field name in point type.\n", getClassName ().c_str ());
