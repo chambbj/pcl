@@ -48,6 +48,8 @@
 #include <boost/foreach.hpp>
 
 #include <pcl/filters/passthrough.h>
+#include <pcl/filters/statistical_outlier_removal.h>
+#include <pcl/filters/voxel_grid.h>
 #include <pcl/io/pcd_io.h>
 #include <pcl/pipeline/pipeline.h>
 
@@ -55,6 +57,15 @@
 template <typename PointT> void
 pcl::Pipeline<PointT>::applyFilter (PointCloud &output)
 {
+  // Has the input dataset been set already?
+  if (!input_)
+  {
+    PCL_WARN ("[pcl::%s::applyFilter] No input dataset given!\n", getClassName ().c_str ());
+    output.width = output.height = 0;
+    output.points.clear ();
+    return;
+  }
+
   std::vector<int> indices;
 
   output.is_dense = true;
@@ -100,6 +111,38 @@ pcl::Pipeline<PointT>::applyFilterIndices (std::vector<int> &indices)
 	pass.setFilterLimits(m1, m2);
 
         pass.filter(indices);
+      }
+
+      if (name == "StatisticalOutlierRemoval")
+      {
+        pcl::StatisticalOutlierRemoval<PointT> sor;
+	sor.setInputCloud(input_);
+	sor.setIndices(indices_);
+
+	int nr_k = vt.second.get<int>("setMeanK", 2);
+        sor.setMeanK(nr_k);
+
+	double stddev_mult = vt.second.get<double>("setStddevMulThresh", 0.0);
+	sor.setStddevMulThresh(stddev_mult);
+
+	std::cout << nr_k << " neighbors and " << stddev_mult << " multiplier" << std::endl;
+
+	sor.filter(indices);
+      }
+
+      if (name == "VoxelGrid")
+      {
+        pcl::VoxelGrid<PointT> vg;
+	vg.setInputCloud(input_);
+	vg.setIndices(indices_);
+
+	float x = vt.second.get<float>("setLeafSize.x", 1.0);
+	float y = vt.second.get<float>("setLeafSize.y", 1.0);
+	float z = vt.second.get<float>("setLeafSize.z", 1.0);
+	std::cout << "leaf size: " << x << ", " << y << ", " << z << std::endl;
+	vg.setLeafSize(x, y, z);
+
+	vg.filter(indices);
       }
     }
   }
