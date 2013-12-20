@@ -142,7 +142,7 @@ pcl::Pipeline<PointT>::applyFilterIndices (std::vector<int> &indices)
 	std::cout << "leaf size: " << x << ", " << y << ", " << z << std::endl;
 	vg.setLeafSize(x, y, z);
 
-	vg.filter(indices);
+	//vg.filter(indices);
       }
     }
   }
