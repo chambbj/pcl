@@ -41,6 +41,12 @@
 #ifndef PCL_FILTERS_IMPL_PIPELINE_HPP_
 #define PCL_FILTERS_IMPL_PIPELINE_HPP_
 
+#include <exception>
+
+#include <boost/property_tree/ptree.hpp>
+#include <boost/property_tree/json_parser.hpp>
+#include <boost/foreach.hpp>
+
 #include <pcl/filters/passthrough.h>
 #include <pcl/io/pcd_io.h>
 #include <pcl/pipeline/pipeline.h>
@@ -65,12 +71,42 @@ pcl::Pipeline<PointT>::applyFilterIndices (std::vector<int> &indices)
   removed_indices_->resize (indices_->size ());
   int oii = 0, rii = 0;  // oii = output indices iterator, rii = removed indices iterator
 
-  pcl::PassThrough<PointT> pass;
-  pass.setInputCloud(input_);
-  pass.setIndices(indices_);
-  pass.setFilterFieldName("z");
-  pass.setFilterLimits(400.0, 500.0);
-  pass.filter(indices);
+  std::cout << filename_ << std::endl;
+
+  try
+  {
+    boost::property_tree::ptree pt;
+    boost::property_tree::read_json(filename_.c_str(), pt);
+
+    std::cout << pt.get<std::string>("pipeline.name") << std::endl;
+    
+    BOOST_FOREACH(boost::property_tree::ptree::value_type &vt, pt.get_child("pipeline.filters"))
+    {
+      std::string name = vt.second.get<std::string>("name");
+
+      if (name == "PassThrough")
+      {
+	pcl::PassThrough<PointT> pass;
+        pass.setInputCloud(input_);
+        pass.setIndices(indices_);
+
+        std::string field = vt.second.get<std::string>("setFilterFieldName");
+        std::cout << "Field name: " << field << std::endl;
+	pass.setFilterFieldName(field);
+
+	float m1 = vt.second.get<float>("setFilterLimits.min", -std::numeric_limits<float>::max());
+	float m2 = vt.second.get<float>("setFilterLimits.max", std::numeric_limits<float>::max());
+        std::cout << "Limits: " << m1 << ", " << m2 << std::endl;
+	pass.setFilterLimits(m1, m2);
+
+        pass.filter(indices);
+      }
+    }
+  }
+  catch (std::exception const& e)
+  {
+    std::cerr << e.what() << std::endl;
+  }
 
   oii = indices.size();
 

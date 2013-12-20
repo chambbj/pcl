@@ -52,6 +52,7 @@ namespace pcl
     * \code
     * pcl::Pipeline<PointType> ptfilter (true); // Initializing with true will allow us to extract the removed indices
     * ptfilter.setInputCloud (cloud_in);
+    * ptfilter.setJSON (filename);
     * ptfilter.filter (*indices_x);
     * \endcode
     * \author Bradley J Chambers
@@ -80,6 +81,16 @@ namespace pcl
       {
         filter_name_ = "Pipeline";
       }
+
+      /** \brief Provide the name of the JSON file describing the PCL pipeline.
+        * \param[in] filename the name of the JSON file describing the PCL pipeline
+        */
+      inline void
+      setJSON (const std::string &filename)
+      {
+        filename_ = filename;
+      }
+
 
     protected:
       using PCLBase<PointT>::input_;
@@ -110,6 +121,9 @@ namespace pcl
       void
       applyFilterIndices (std::vector<int> &indices);
 
+    private:
+      /** \brief The name of the JSON file describing the PCL pipeline. */
+      std::string filename_;
   };
 
   ////////////////////////////////////////////////////////////////////////////////////////////
@@ -130,15 +144,28 @@ namespace pcl
     public:
       /** \brief Constructor. */
       Pipeline (bool extract_removed_indices = false) :
-        Filter<pcl::PCLPointCloud2>::Filter (extract_removed_indices)
+        Filter<pcl::PCLPointCloud2>::Filter (extract_removed_indices),
+	filename_ ("")
       {
         filter_name_ = "Pipeline";
+      }
+
+      /** \brief Provide the name of the JSON file describing the PCL pipeline.
+        * \param[in] filename the name of the JSON file describing the PCL pipeline
+        */
+      inline void
+      setJSON (const std::string &filename)
+      {
+        filename_ = filename;
       }
 
     protected:
       void
       applyFilter (PCLPointCloud2 &output);
 
+    private:
+      /** \brief The name of the JSON file describing the PCL pipeline. */
+      std::string filename_;
   };
 }
 
