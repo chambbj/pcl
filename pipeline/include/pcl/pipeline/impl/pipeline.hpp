@@ -52,6 +52,7 @@
 #include <pcl/filters/voxel_grid.h>
 #include <pcl/io/pcd_io.h>
 #include <pcl/pipeline/pipeline.h>
+#include <pcl/segmentation/progressive_morphological_filter.h>
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 template <typename PointT> void
@@ -143,6 +144,14 @@ pcl::Pipeline<PointT>::applyFilterIndices (std::vector<int> &indices)
 	vg.setLeafSize(x, y, z);
 
 	//vg.filter(indices);
+      }
+
+      if (name == "ProgressiveMorphologicalFilter")
+      {
+        pcl::ProgressiveMorphologicalFilter<PointT> pmf;
+	pmf.setInputCloud(input_);
+	pmf.setIndices(indices_);
+	pmf.extract(indices);
       }
     }
   }

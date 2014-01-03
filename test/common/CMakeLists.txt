@@ -15,3 +15,4 @@ PCL_ADD_TEST(common_generator test_generator FILES test_generator.cpp LINK_WITH 
 PCL_ADD_TEST(common_io test_common_io FILES test_io.cpp LINK_WITH pcl_gtest pcl_common)
 
 PCL_ADD_TEST(common_point_type_conversion test_common_point_type_conversion FILES test_point_type_conversion.cpp LINK_WITH pcl_gtest pcl_common)
+#PCL_ADD_TEST(common_morphological test_morphological FILES test_morphological.cpp LINK_WITH pcl_gtest pcl_common)

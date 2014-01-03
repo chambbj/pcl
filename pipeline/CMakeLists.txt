@@ -1,6 +1,6 @@
 set(SUBSYS_NAME pipeline)
 set(SUBSYS_DESC "Point cloud pipeline library")
-set(SUBSYS_DEPS common filters io search kdtree octree)
+set(SUBSYS_DEPS common filters io search kdtree octree segmentation)
 
 set(build TRUE)
 PCL_SUBSYS_OPTION(build ${SUBSYS_NAME} ${SUBSYS_DESC} ON)
@@ -24,7 +24,7 @@ if(build)
     set(LIB_NAME pcl_${SUBSYS_NAME})
     include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include)
     PCL_ADD_LIBRARY(${LIB_NAME} ${SUBSYS_NAME} ${srcs} ${incs} ${impl_incs})
-    target_link_libraries(${LIB_NAME} pcl_common pcl_filters pcl_search pcl_kdtree pcl_octree)
+    target_link_libraries(${LIB_NAME} pcl_common pcl_filters pcl_search pcl_kdtree pcl_octree pcl_segmentation)
     PCL_MAKE_PKGCONFIG(${LIB_NAME} ${SUBSYS_NAME} "${SUBSYS_DESC}" "${SUBSYS_DEPS}" "" "" "" "")
 
     # Install include files

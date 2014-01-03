@@ -1,6 +1,6 @@
 set(SUBSYS_NAME common)
 set(SUBSYS_DESC "Point cloud common library")
-set(SUBSYS_DEPS)
+set(SUBSYS_DEPS octree search)
 
 set(build TRUE)
 PCL_SUBSYS_OPTION(build ${SUBSYS_NAME} ${SUBSYS_DESC} ON)
@@ -106,6 +106,7 @@ if(build)
         include/pcl/common/random.h
         include/pcl/common/generate.h
         include/pcl/common/projection_matrix.h
+        include/pcl/common/morphological_filter.h
         )
 
     set(common_incs_impl
@@ -129,6 +130,7 @@ if(build)
         include/pcl/common/impl/random.hpp
         include/pcl/common/impl/generate.hpp
         include/pcl/common/impl/projection_matrix.hpp
+        include/pcl/common/impl/morphological_filter.hpp
         )
 
     set(impl_incs 
