@@ -97,7 +97,7 @@ namespace pcl
                       pcl::PointCloud<PointT> &cloud_out);
 }
 
-#include <pcl/common/impl/morphological_filter.hpp>
+#include <pcl/filters/impl/morphological_filter.hpp>
 
 #endif  //#ifndef PCL_COMMON_MORPHOLOGICAL_FILTER_H_
 
