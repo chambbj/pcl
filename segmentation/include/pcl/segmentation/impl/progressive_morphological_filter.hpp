@@ -37,7 +37,7 @@
 #ifndef PCL_SEGMENTATION_PROGRESSIVE_MORPHOLOGICAL_FILTER_HPP_
 #define PCL_SEGMENTATION_PROGRESSIVE_MORPHOLOGICAL_FILTER_HPP_
 
-#include <pcl/common/morphological_filter.h>
+#include <pcl/filters/morphological_filter.h>
 #include <pcl/segmentation/progressive_morphological_filter.h>
 
 #include <pcl/search/search.h>

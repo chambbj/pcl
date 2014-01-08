@@ -47,7 +47,7 @@
 
 #include <pcl/common/common.h>
 #include <pcl/common/io.h>
-#include <pcl/common/morphological_filter.h>
+#include <pcl/filters/morphological_filter.h>
 #include <pcl/search/search.h>
 #include <pcl/octree/octree_search.h>
 

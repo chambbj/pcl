@@ -38,7 +38,7 @@
  */
 
 #include <gtest/gtest.h>
-#include <pcl/common/morphological_filter.h>
+#include <pcl/filters/morphological_filter.h>
 #include <pcl/point_types.h>
 #include <pcl/point_cloud.h>
 
