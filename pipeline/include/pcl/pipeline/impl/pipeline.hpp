@@ -82,18 +82,30 @@ pcl::Pipeline<PointT>::applyFilterIndices (std::vector<int> &indices)
   removed_indices_->resize (indices_->size ());
   int oii = 0, rii = 0;  // oii = output indices iterator, rii = removed indices iterator
 
-  std::cout << filename_ << std::endl;
-
   try
   {
     boost::property_tree::ptree pt;
     boost::property_tree::read_json(filename_.c_str(), pt);
 
-    std::cout << pt.get<std::string>("pipeline.name") << std::endl;
-    
+    std::cout << std::endl;
+    std::cout << "Processing " << filename_ << std::endl;
+    std::cout << std::endl;
+    std::cout << "--------------------------------------------------------------------------------" << std::endl;
+    std::cout << "NAME:    " << pt.get<std::string>("pipeline.name","") << std::endl;
+    std::cout << "HELP:    " << pt.get<std::string>("pipeline.help","") << std::endl;
+    std::cout << "VERSION: " << pt.get<std::string>("pipeline.version","") << std::endl;
+    std::cout << "AUTHOR:  " << pt.get<std::string>("pipeline.author","") << std::endl;
+    std::cout << "--------------------------------------------------------------------------------" << std::endl;
+
+    int step = 1;
+
     BOOST_FOREACH(boost::property_tree::ptree::value_type &vt, pt.get_child("pipeline.filters"))
     {
-      std::string name = vt.second.get<std::string>("name");
+      std::cout << std::endl;
+      std::string name = vt.second.get<std::string>("name","");
+      std::string help = vt.second.get<std::string>("help","");
+
+      std::cout << "   Step " << step++ << ") " << name << ": " << help << std::endl;
 
       if (name == "PassThrough")
       {
@@ -102,12 +114,12 @@ pcl::Pipeline<PointT>::applyFilterIndices (std::vector<int> &indices)
         pass.setIndices(indices_);
 
         std::string field = vt.second.get<std::string>("setFilterFieldName");
-        std::cout << "Field name: " << field << std::endl;
+        std::cout << "      Field name: " << field << std::endl;
 	pass.setFilterFieldName(field);
 
 	float m1 = vt.second.get<float>("setFilterLimits.min", -std::numeric_limits<float>::max());
 	float m2 = vt.second.get<float>("setFilterLimits.max", std::numeric_limits<float>::max());
-        std::cout << "Limits: " << m1 << ", " << m2 << std::endl;
+        std::cout << "      Limits: " << m1 << ", " << m2 << std::endl;
 	pass.setFilterLimits(m1, m2);
 
         pass.filter(indices);
@@ -125,7 +137,7 @@ pcl::Pipeline<PointT>::applyFilterIndices (std::vector<int> &indices)
 	double stddev_mult = vt.second.get<double>("setStddevMulThresh", 0.0);
 	sor.setStddevMulThresh(stddev_mult);
 
-	std::cout << nr_k << " neighbors and " << stddev_mult << " multiplier" << std::endl;
+	std::cout << "       " << nr_k << " neighbors and " << stddev_mult << " multiplier" << std::endl;
 
 	sor.filter(indices);
       }
@@ -139,12 +151,14 @@ pcl::Pipeline<PointT>::applyFilterIndices (std::vector<int> &indices)
 	float x = vt.second.get<float>("setLeafSize.x", 1.0);
 	float y = vt.second.get<float>("setLeafSize.y", 1.0);
 	float z = vt.second.get<float>("setLeafSize.z", 1.0);
-	std::cout << "leaf size: " << x << ", " << y << ", " << z << std::endl;
+	std::cout << "      leaf size: " << x << ", " << y << ", " << z << std::endl;
 	vg.setLeafSize(x, y, z);
 
 	//vg.filter(indices);
       }
     }
+
+    std::cout << std::endl;
   }
   catch (std::exception const& e)
   {
