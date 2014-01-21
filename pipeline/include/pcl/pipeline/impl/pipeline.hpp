@@ -83,81 +83,108 @@ pcl::Pipeline<PointT>::applyFilterIndices (std::vector<int> &indices)
   removed_indices_->resize (indices_->size ());
   int oii = 0, rii = 0;  // oii = output indices iterator, rii = removed indices iterator
 
-  std::cout << filename_ << std::endl;
-
   try
   {
     boost::property_tree::ptree pt;
     boost::property_tree::read_json(filename_.c_str(), pt);
 
-    std::cout << pt.get<std::string>("pipeline.name") << std::endl;
-    
+    PCL_DEBUG("\n");
+    PCL_DEBUG("Processing %s\n", filename_.c_str());
+    PCL_INFO("\n");
+    PCL_INFO("--------------------------------------------------------------------------------\n");
+    PCL_INFO("NAME:   %s (%s)\n", pt.get<std::string>("pipeline.name","").c_str(), pt.get<std::string>("pipeline.version","").c_str());
+    PCL_DEBUG("HELP:   %s\n", pt.get<std::string>("pipeline.help","").c_str());
+    PCL_DEBUG("AUTHOR: %s\n", pt.get<std::string>("pipeline.author","").c_str());
+    PCL_INFO("--------------------------------------------------------------------------------\n");
+
+    int step = 1;
+
     BOOST_FOREACH(boost::property_tree::ptree::value_type &vt, pt.get_child("pipeline.filters"))
     {
-      std::string name = vt.second.get<std::string>("name");
+      std::string name = vt.second.get<std::string>("name","");
+      std::string help = vt.second.get<std::string>("help","");
+
+      PCL_INFO("\n");
+      PCL_INFO("   Step %d) %s\n", step++, name.c_str());
+      PCL_DEBUG("      %s\n", help.c_str());
 
       if (name == "PassThrough")
       {
+	// initial setup
 	pcl::PassThrough<PointT> pass;
         pass.setInputCloud(input_);
         pass.setIndices(indices_);
 
+	// parse params
         std::string field = vt.second.get<std::string>("setFilterFieldName");
-        std::cout << "Field name: " << field << std::endl;
-	pass.setFilterFieldName(field);
-
 	float m1 = vt.second.get<float>("setFilterLimits.min", -std::numeric_limits<float>::max());
 	float m2 = vt.second.get<float>("setFilterLimits.max", std::numeric_limits<float>::max());
-        std::cout << "Limits: " << m1 << ", " << m2 << std::endl;
+        
+	// summarize settings
+	PCL_DEBUG("      Field name: %s\n", field.c_str());
+        PCL_DEBUG("      Limits: %f, %f\n", m1, m2);
+	
+	// set params and apply filter
+	pass.setFilterFieldName(field);
 	pass.setFilterLimits(m1, m2);
-
         pass.filter(indices);
       }
-
-      if (name == "StatisticalOutlierRemoval")
+      else if (name == "StatisticalOutlierRemoval")
       {
+	// initial setup
         pcl::StatisticalOutlierRemoval<PointT> sor;
 	sor.setInputCloud(input_);
 	sor.setIndices(indices_);
 
+	// parse params
 	int nr_k = vt.second.get<int>("setMeanK", 2);
-        sor.setMeanK(nr_k);
-
 	double stddev_mult = vt.second.get<double>("setStddevMulThresh", 0.0);
+
+	// summarize settings
+	PCL_DEBUG("      %d neighbors and %f multiplier\n", nr_k, stddev_mult);
+
+	// set params and apply filter
+        sor.setMeanK(nr_k);
 	sor.setStddevMulThresh(stddev_mult);
-
-	std::cout << nr_k << " neighbors and " << stddev_mult << " multiplier" << std::endl;
-
 	sor.filter(indices);
       }
-
-      if (name == "VoxelGrid")
+      else if (name == "VoxelGrid")
       {
+	// initial setup
         pcl::VoxelGrid<PointT> vg;
 	vg.setInputCloud(input_);
 	vg.setIndices(indices_);
 
+	// parse params
 	float x = vt.second.get<float>("setLeafSize.x", 1.0);
 	float y = vt.second.get<float>("setLeafSize.y", 1.0);
 	float z = vt.second.get<float>("setLeafSize.z", 1.0);
-	std::cout << "leaf size: " << x << ", " << y << ", " << z << std::endl;
-	vg.setLeafSize(x, y, z);
 
+	// summarize settings
+	PCL_DEBUG("      leaf size: %f, %f, %f\n", x, y, z);
+
+	// set params and apply filter
+	vg.setLeafSize(x, y, z);
 	//vg.filter(indices);
       }
-
-      if (name == "ProgressiveMorphologicalFilter")
+      else if (name == "ProgressiveMorphologicalFilter")
       {
         pcl::ProgressiveMorphologicalFilter<PointT> pmf;
 	pmf.setInputCloud(input_);
 	pmf.setIndices(indices_);
 	pmf.extract(indices);
       }
+      else
+      {
+        PCL_WARN("Requested filter `%s` not implemented! Skipping...\n", name.c_str());
+      }
     }
+
+    PCL_INFO("\n");
   }
   catch (std::exception const& e)
   {
-    std::cerr << e.what() << std::endl;
+    PCL_ERROR("[pcl::%s::applyFilterIndices] Error parsing JSON and creating pipeline! %s\n", getClassName().c_str(), e.what());
   }
 
   oii = indices.size();
