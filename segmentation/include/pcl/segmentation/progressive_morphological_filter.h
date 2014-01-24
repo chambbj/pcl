@@ -100,6 +100,12 @@ namespace pcl
       float getInitialDistance() const;
       void setInitialDistance(float initial_distance);
 
+      std::vector<int>
+      firstIteration( const PointCloud source, float c, float b, int k, float s, float dh_0, float dh_max, float dh, float w, float w_max, bool exponential=true);
+
+      std::vector<int>
+      pmfIteration( const PointCloud source, float c, float b, int k, float s, float dh_0, float dh_max, float dh, float w, float w_max, std::vector<int> indices, bool exponential=true);
+
       /** \brief This method launches the segmentation algorithm and returns the clusters that were
         * obtained during the segmentation.
         * \param[out] clusters clusters that were obtained. Each cluster is an array of point indices.
