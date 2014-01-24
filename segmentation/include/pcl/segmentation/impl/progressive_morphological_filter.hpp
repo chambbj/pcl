@@ -38,6 +38,8 @@
 #define PCL_SEGMENTATION_PROGRESSIVE_MORPHOLOGICAL_FILTER_HPP_
 
 #include <pcl/filters/morphological_filter.h>
+#include <pcl/filters/extract_indices.h>
+#include <pcl/filters/passthrough.h>
 #include <pcl/segmentation/progressive_morphological_filter.h>
 
 #include <pcl/search/search.h>
@@ -120,6 +122,129 @@ pcl::ProgressiveMorphologicalFilter<PointT>::setInitialDistance (float initial_d
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+template <typename PointT> std::vector<int>
+pcl::ProgressiveMorphologicalFilter<PointT>::firstIteration ( const pcl::PointCloud<PointT> source, float c, float b, int k, float s, float dh_0, float dh_max, float dh, float w, float w_max, bool exponential)
+{
+  typename pcl::PointCloud<PointT>::Ptr ground ( new pcl::PointCloud<PointT> );
+  typename pcl::PointCloud<PointT>::Ptr object ( new pcl::PointCloud<PointT> );
+  typename pcl::PointCloud<PointT>::Ptr cloud ( new pcl::PointCloud<PointT> );
+  typename pcl::PointCloud<PointT>::Ptr cloud_f ( new pcl::PointCloud<PointT> );
+
+  pcl::copyPointCloud<PointT,PointT>( source, *cloud );
+  pcl::copyPointCloud<PointT,PointT>( source, *cloud_f );
+
+  float resolution = w / 2.0f;
+
+  pcl::morphologicalOpen<PointT>( *cloud, resolution, *cloud_f );
+
+  std::vector<int> pt_indices;
+
+  pcl::PassThrough<PointT> pass;
+  pass.setInputCloud( cloud_f );
+  pass.setFilterFieldName( "z" );
+  pass.setFilterLimits( -std::numeric_limits<float>::max(), dh );
+  pass.filter( pt_indices );
+
+  pcl::PointIndicesPtr foo( new pcl::PointIndices );
+  foo->indices = pt_indices;
+
+  pcl::ExtractIndices<PointT> extract;
+  extract.setInputCloud( source.makeShared() );
+  extract.setIndices( foo );
+  extract.filter( *ground );
+
+  PCL_INFO( "Ground has %d points\n", ground->points.size() );
+
+  float w_prev = w;
+
+  if ( exponential )
+  { w = c * (2.0f * std::pow(b, k++) + 1.0f); }
+  else
+  { w = c * (2.0f * k++ * b + 1.0f); }
+
+  dh = s * (w - w_prev) * c + dh_0;
+
+  if (dh > dh_max)
+  { dh = dh_max; }
+
+  PCL_DEBUG( "s = %f; c = %f; w = %f; w_prev = %f; dh = %f; dh_max = %f\n", s, c, w, w_prev, dh, dh_max );
+
+  std::vector<int>
+  ground_pts = pmfIteration( *ground, c, b, k, s, dh_0, dh_max, dh, w, w_max, pt_indices, exponential );
+
+  return ground_pts;
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+template <typename PointT> std::vector<int>
+pcl::ProgressiveMorphologicalFilter<PointT>::pmfIteration ( const pcl::PointCloud<PointT> source, float c, float b, int k, float s, float dh_0, float dh_max, float dh, float w, float w_max, std::vector<int> indices, bool exponential)
+{
+  if ( w > w_max )
+  {
+    PCL_INFO( "Reached max window size %f\n", w );
+    return indices;
+  }
+
+  if (indices.empty())
+  { PCL_WARN( "indices are empty!\n" ); }
+
+  typename pcl::PointCloud<PointT>::Ptr ground ( new pcl::PointCloud<PointT> );
+  typename pcl::PointCloud<PointT>::Ptr cloud ( new pcl::PointCloud<PointT> );
+  typename pcl::PointCloud<PointT>::Ptr cloud_f ( new pcl::PointCloud<PointT> );
+
+  pcl::copyPointCloud<PointT,PointT>( source, *cloud );
+  pcl::copyPointCloud<PointT,PointT>( source, *cloud_f );
+
+  float resolution = w / 2.0f;
+
+  PCL_DEBUG( "res = %f; half_res = %f; threshold = %f\n", w, resolution, dh );
+
+  pcl::morphologicalOpen<PointT>( *cloud, resolution, *cloud_f );
+
+  std::vector<int> pt_indices;
+
+  pcl::PassThrough<PointT> pass;
+  pass.setInputCloud( cloud_f );
+  pass.setFilterFieldName( "z" );
+  pass.setFilterLimits( -std::numeric_limits<float>::max(), dh );
+  pass.filter( pt_indices );
+
+  pcl::PointIndicesPtr foo( new pcl::PointIndices );
+  foo->indices = pt_indices;
+
+  pcl::ExtractIndices<PointT> extract;
+  extract.setInputCloud( source.makeShared() );
+  extract.setIndices( foo );
+  extract.filter( *ground );
+
+  PCL_INFO( "Ground has %d points\n", ground->points.size() );
+
+  float w_prev = w;
+
+  if ( exponential )
+  { w = c * (2.0f * std::pow(b, k++) + 1.0f); }
+  else
+  { w = c * (2.0f * k++ * b + 1.0f); }
+
+  dh = s * (w - w_prev) * c + dh_0;
+
+  if (dh > dh_max)
+  { dh = dh_max; }
+
+  PCL_DEBUG( "s = %f; c = %f; w = %f; w_prev = %f; dh = %f; dh_max = %f\n", s, c, w, w_prev, dh, dh_max );
+
+  std::vector<int>
+  ground_pts = pmfIteration( *ground, c, b, k, s, dh_0, dh_max, dh, w, w_max, pt_indices, exponential);
+
+  std::vector<int> output_vec;
+
+  for ( size_t i = 0; i < ground_pts.size(); ++i )
+  { output_vec.push_back( indices[ground_pts[i]] ); }
+
+  return output_vec;
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 template <typename PointT> void
 pcl::ProgressiveMorphologicalFilter<PointT>::extract (std::vector <int>& ground)
 {
@@ -135,6 +260,30 @@ pcl::ProgressiveMorphologicalFilter<PointT>::extract (std::vector <int>& ground)
 
   typename pcl::PointCloud<PointT>::Ptr cloud_out( new pcl::PointCloud<PointT> );
 
+  float dh_0 = 0.15f;
+  float c = 1.0f;
+  float s = 0.7f;
+  float dh_max = 2.5f;
+  float w_max = 33.0f;
+  bool exponential = true;
+
+  float b = 2.0f;          // w_k = 2 * b^k + 1
+  float dh = dh_0;         // elevation differnce threshold
+  std::vector<float> w_k;  // series of window sizes
+  float w = 0.0f;
+  int k = 0;
+
+  if (exponential)
+  { w = c * ( 2.0f * std::pow(b, k++) + 1.0f); }
+  else
+  {
+    k = 1;
+    w = c * ( 2.0f * k++ * b + 1.0f );
+  }
+
+  ground = firstIteration( *input_, c, b, k, s, dh_0, dh_max, dh, w, w_max, exponential );
+
+/*
   float window_size = 3.0f;
   int level = 0;
 
@@ -148,7 +297,7 @@ pcl::ProgressiveMorphologicalFilter<PointT>::extract (std::vector <int>& ground)
     level++;
     window_size = static_cast<float>(2 * std::pow(2, level) + 1);
   }
-
+*/
   deinitCompute ();
 }
 
