@@ -8,27 +8,34 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
   config.vm.box = "precise64"
   config.vm.hostname = "pcl-vagrant"
   config.vm.box_url = "http://files.vagrantup.com/precise64.box"
-  config.vm.host_name = "pcl-vagrant"
-  
+  config.vm.network :forwarded_port, guest: 80, host: 8080 
   config.vm.provider :virtualbox do |vb|
      vb.customize ["modifyvm", :id, "--memory", "4096"]
      vb.customize ["modifyvm", :id, "--cpus", "4"]   
      vb.customize ["modifyvm", :id, "--ioapic", "on"]
      vb.name = "pcl-vagrant"
+#     vb.gui = true
    end  
 
   ppaRepos = [
-    "ppa:v-launchpad-jochen-sprickerhof-de/pcl"
+#    "ppa:v-launchpad-jochen-sprickerhof-de/pcl"
+#	  "ppa:apokluda/boost1.53",
+#          "ppa:kalakris/eigen"
   ]
 
   packageList = [
     "git",
     "build-essential",
+    "make",
     "pkg-config",
     "cmake",
 #    "libpcl-all",
     "vim",
-    "cmake-curses-gui"
+    "cmake-curses-gui",
+    "libboost1.48-all-dev",
+    "libeigen3-dev",
+    "libvtk5-dev",
+    "libflann-dev"
   ];
 
   if Dir.glob("#{File.dirname(__FILE__)}/.vagrant/machines/default/*/id").empty?
