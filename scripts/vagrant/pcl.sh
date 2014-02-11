@@ -9,10 +9,13 @@ export NUMTHREADS
 
 git clone https://github.com/chambbj/pcl.git pcl
 cd pcl
-sudo git checkout develop
+git checkout develop
+mkdir build; cd build
 cmake   -G "Unix Makefiles"  \
         -DCMAKE_BUILD_TYPE=Release \
-        -DCMAKE_INSTALL_PREFIX=/usr
+        -DCMAKE_INSTALL_PREFIX=/usr \
+	-DBUILD_global_tests=ON \
+        ..
 
 make -j $NUMTHREADS
 sudo make install
