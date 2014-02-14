@@ -100,9 +100,16 @@ pcl::Pipeline<PointT>::applyFilterIndices (std::vector<int> &indices)
 
     int step = 1;
 
+    indices = *indices_;
+
     BOOST_FOREACH(boost::property_tree::ptree::value_type &vt, pt.get_child("pipeline.filters"))
     {
-      IndicesPtr temp_indices ( new std::vector<int>(indices) );
+      //IndicesPtr temp_indices ( new std::vector<int>(indices) );
+      std::vector<int> local_indices;
+      typename pcl::PointCloud<PointT>::Ptr local_cloud ( new pcl::PointCloud<PointT>);
+      pcl::copyPointCloud<PointT>( *input_, indices, *local_cloud );
+
+      PCL_INFO("%d points copied\n",local_cloud->points.size());
 
       std::string name = vt.second.get<std::string>("name","");
       std::string help = vt.second.get<std::string>("help","");
@@ -115,8 +122,8 @@ pcl::Pipeline<PointT>::applyFilterIndices (std::vector<int> &indices)
       {
 	// initial setup
 	pcl::PassThrough<PointT> pass;
-        pass.setInputCloud(input_);
-        pass.setIndices(temp_indices);
+        pass.setInputCloud(local_cloud);
+        //pass.setIndices(temp_indices);
 
 	// parse params
         std::string field = vt.second.get<std::string>("setFilterFieldName");
@@ -130,14 +137,14 @@ pcl::Pipeline<PointT>::applyFilterIndices (std::vector<int> &indices)
 	// set params and apply filter
 	pass.setFilterFieldName(field);
 	pass.setFilterLimits(m1, m2);
-        pass.filter(indices);
+        pass.filter(local_indices);
       }
       else if (name == "StatisticalOutlierRemoval")
       {
 	// initial setup
         pcl::StatisticalOutlierRemoval<PointT> sor;
-	sor.setInputCloud(input_);
-	sor.setIndices(temp_indices);
+	sor.setInputCloud(local_cloud);
+	//sor.setIndices(temp_indices);
 
 	// parse params
 	int nr_k = vt.second.get<int>("setMeanK", 2);
@@ -149,16 +156,16 @@ pcl::Pipeline<PointT>::applyFilterIndices (std::vector<int> &indices)
 	// set params and apply filter
         sor.setMeanK(nr_k);
 	sor.setStddevMulThresh(stddev_mult);
-	sor.filter(indices);
+	sor.filter(local_indices);
 
-        PCL_INFO("      %d points filtered to %d following outlier removal\n", temp_indices->size(), indices.size());
+        PCL_INFO("      %d points filtered to %d following outlier removal\n", indices.size(), local_indices.size());
       }
       else if (name == "RadiusOutlierRemoval")
       {
 	// initial setup
         pcl::RadiusOutlierRemoval<PointT> ror;
-	ror.setInputCloud(input_);
-	ror.setIndices(temp_indices);
+	ror.setInputCloud(local_cloud);
+	//ror.setIndices(temp_indices);
 
 	// parse params
 	int min_neighbors = vt.second.get<int>("setMinNeighborsInRadius", 2);
@@ -170,16 +177,16 @@ pcl::Pipeline<PointT>::applyFilterIndices (std::vector<int> &indices)
 	// set params and apply filter
         ror.setMinNeighborsInRadius(min_neighbors);
 	ror.setRadiusSearch(radius);
-	ror.filter(indices);
+	ror.filter(local_indices);
 
-        PCL_INFO("      %d points filtered to %d following outlier removal\n", temp_indices->size(), indices.size());
+        PCL_INFO("      %d points filtered to %d following outlier removal\n", indices.size(), local_indices.size());
       }
       else if (name == "VoxelGrid")
       {
 	// initial setup
         pcl::VoxelGrid<PointT> vg;
-	vg.setInputCloud(input_);
-	vg.setIndices(temp_indices);
+	vg.setInputCloud(local_cloud);
+	//vg.setIndices(temp_indices);
 
 	// parse params
 	float x = vt.second.get<float>("setLeafSize.x", 1.0);
@@ -191,22 +198,28 @@ pcl::Pipeline<PointT>::applyFilterIndices (std::vector<int> &indices)
 
 	// set params and apply filter
 	vg.setLeafSize(x, y, z);
-	//vg.filter(indices);
+	//vg.filter(local_indices);
       }
       else if (name == "ProgressiveMorphologicalFilter")
       {
         PCL_DEBUG( "pmf\n" );
         pcl::ProgressiveMorphologicalFilter<PointT> pmf;
-	pmf.setInputCloud(input_);
-	pmf.setIndices(temp_indices);
-	pmf.extract(indices);
+	pmf.setInputCloud(local_cloud);
+	//pmf.setIndices(temp_indices);
+	pmf.extract(local_indices);
 
-        PCL_INFO("      %d points filtered to %d following progressive morphological filter\n", temp_indices->size(), indices.size());
+        PCL_INFO("      %d points filtered to %d following progressive morphological filter\n", indices.size(), local_indices.size());
       }
       else
       {
         PCL_WARN("Requested filter `%s` not implemented! Skipping...\n", name.c_str());
       }
+
+      // need to update indices with local_indices
+      std::vector<int> temp_indices(local_indices.size());
+      for ( int idx = 0; idx < local_indices.size(); ++idx )
+        temp_indices[idx] = indices[local_indices[idx]];
+      indices.swap(temp_indices);
     }
 
     PCL_INFO("\n");
