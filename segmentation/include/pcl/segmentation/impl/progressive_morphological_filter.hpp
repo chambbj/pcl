@@ -37,6 +37,7 @@
 #ifndef PCL_SEGMENTATION_PROGRESSIVE_MORPHOLOGICAL_FILTER_HPP_
 #define PCL_SEGMENTATION_PROGRESSIVE_MORPHOLOGICAL_FILTER_HPP_
 
+#include <pcl/common/common.h>
 #include <pcl/filters/morphological_filter.h>
 #include <pcl/filters/extract_indices.h>
 #include <pcl/filters/passthrough.h>
@@ -123,24 +124,46 @@ pcl::ProgressiveMorphologicalFilter<PointT>::setInitialDistance (float initial_d
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 template <typename PointT> std::vector<int>
-pcl::ProgressiveMorphologicalFilter<PointT>::firstIteration ( const pcl::PointCloud<PointT> source, float c, float b, int k, float s, float dh_0, float dh_max, float dh, float w, float w_max, bool exponential)
+pcl::ProgressiveMorphologicalFilter<PointT>::firstIteration ( const typename pcl::PointCloud<PointT>::ConstPtr &source, float c, float b, int k, float s, float dh_0, float dh_max, float dh, float w, float w_max, bool exponential)
 {
+  PCL_DEBUG( "      Iteration %d", k );
+  PCL_DEBUG( " (dh = %f, w = %f)", dh, w );
+  PCL_DEBUG( "..." );
+
   typename pcl::PointCloud<PointT>::Ptr ground ( new pcl::PointCloud<PointT> );
   typename pcl::PointCloud<PointT>::Ptr object ( new pcl::PointCloud<PointT> );
   typename pcl::PointCloud<PointT>::Ptr cloud ( new pcl::PointCloud<PointT> );
   typename pcl::PointCloud<PointT>::Ptr cloud_f ( new pcl::PointCloud<PointT> );
 
-  pcl::copyPointCloud<PointT,PointT>( source, *cloud );
-  pcl::copyPointCloud<PointT,PointT>( source, *cloud_f );
+  pcl::copyPointCloud<PointT,PointT>( *source, *cloud );
+  pcl::copyPointCloud<PointT,PointT>( *source, *cloud_f );
 
-  float resolution = w / 2.0f;
+  cloud->is_dense = true;
 
+  float resolution = w; // also divided in morphologicalOpen, need to clear this up
+  
   pcl::morphologicalOpen<PointT>( *cloud, resolution, *cloud_f );
+
+//  Eigen::Vector4f minpt, maxpt;
+//  getMinMax3D<PointT>( source, minpt, maxpt );
+//  PCL_DEBUG( "   z range [%f, %f]\n", minpt.z(), maxpt.z() );
+
+//  getMinMax3D<PointT>( *cloud, minpt, maxpt );
+//  PCL_DEBUG( "   z range [%f, %f]\n", minpt.z(), maxpt.z() );
+
+//  getMinMax3D<PointT>( *cloud_f, minpt, maxpt );
+//  PCL_DEBUG( "   z range [%f, %f]\n", minpt.z(), maxpt.z() );
+
+  for ( boost::int32_t p_idx = 0; p_idx < source->points.size(); ++p_idx )
+    cloud->points[p_idx].z = source->points[p_idx].z - cloud_f->points[p_idx].z;
+
+//  getMinMax3D<PointT>( *cloud, minpt, maxpt );
+//  PCL_DEBUG( "   z range [%f, %f]\n", minpt.z(), maxpt.z() );
 
   std::vector<int> pt_indices;
 
   pcl::PassThrough<PointT> pass;
-  pass.setInputCloud( cloud_f );
+  pass.setInputCloud( cloud );
   pass.setFilterFieldName( "z" );
   pass.setFilterLimits( -std::numeric_limits<float>::max(), dh );
   pass.filter( pt_indices );
@@ -149,11 +172,11 @@ pcl::ProgressiveMorphologicalFilter<PointT>::firstIteration ( const pcl::PointCl
   foo->indices = pt_indices;
 
   pcl::ExtractIndices<PointT> extract;
-  extract.setInputCloud( source.makeShared() );
+  extract.setInputCloud( source );
   extract.setIndices( foo );
   extract.filter( *ground );
 
-  PCL_INFO( "Ground has %d points\n", ground->points.size() );
+  PCL_DEBUG( "ground now has %d points\n", ground->points.size() );
 
   float w_prev = w;
 
@@ -167,7 +190,7 @@ pcl::ProgressiveMorphologicalFilter<PointT>::firstIteration ( const pcl::PointCl
   if (dh > dh_max)
   { dh = dh_max; }
 
-  PCL_DEBUG( "s = %f; c = %f; w = %f; w_prev = %f; dh = %f; dh_max = %f\n", s, c, w, w_prev, dh, dh_max );
+//  PCL_DEBUG( "s = %f; c = %f; w = %f; w_prev = %f; dh = %f; dh_max = %f\n", s, c, w, w_prev, dh, dh_max );
 
   std::vector<int>
   ground_pts = pmfIteration( *ground, c, b, k, s, dh_0, dh_max, dh, w, w_max, pt_indices, exponential );
@@ -181,9 +204,13 @@ pcl::ProgressiveMorphologicalFilter<PointT>::pmfIteration ( const pcl::PointClou
 {
   if ( w > w_max )
   {
-    PCL_INFO( "Reached max window size %f\n", w );
+    PCL_DEBUG( "      Reached max window size %f\n", w );
     return indices;
   }
+
+  PCL_DEBUG( "      Iteration %d", k );
+  PCL_DEBUG( " (dh = %f, w = %f)", dh, w );
+  PCL_DEBUG( "..." );
 
   if (indices.empty())
   { PCL_WARN( "indices are empty!\n" ); }
@@ -195,16 +222,32 @@ pcl::ProgressiveMorphologicalFilter<PointT>::pmfIteration ( const pcl::PointClou
   pcl::copyPointCloud<PointT,PointT>( source, *cloud );
   pcl::copyPointCloud<PointT,PointT>( source, *cloud_f );
 
-  float resolution = w / 2.0f;
+  cloud->is_dense = true;
 
-  PCL_DEBUG( "res = %f; half_res = %f; threshold = %f\n", w, resolution, dh );
+  float resolution = w; // divide by two occurs in morphological filter
 
   pcl::morphologicalOpen<PointT>( *cloud, resolution, *cloud_f );
+
+//  Eigen::Vector4f minpt, maxpt;
+//  getMinMax3D<PointT>( source, minpt, maxpt );
+//  PCL_DEBUG( "   z range [%f, %f]\n", minpt.z(), maxpt.z() );
+
+//  getMinMax3D<PointT>( *cloud, minpt, maxpt );
+//  PCL_DEBUG( "   z range [%f, %f]\n", minpt.z(), maxpt.z() );
+
+//  getMinMax3D<PointT>( *cloud_f, minpt, maxpt );
+//  PCL_DEBUG( "   z range [%f, %f]\n", minpt.z(), maxpt.z() );
+
+  for ( boost::int32_t p_idx = 0; p_idx < source.points.size(); ++p_idx )
+    cloud->points[p_idx].z = source.points[p_idx].z - cloud_f->points[p_idx].z;
+
+//  getMinMax3D<PointT>( *cloud, minpt, maxpt );
+//  PCL_DEBUG( "   z range [%f, %f]\n", minpt.z(), maxpt.z() );
 
   std::vector<int> pt_indices;
 
   pcl::PassThrough<PointT> pass;
-  pass.setInputCloud( cloud_f );
+  pass.setInputCloud( cloud );
   pass.setFilterFieldName( "z" );
   pass.setFilterLimits( -std::numeric_limits<float>::max(), dh );
   pass.filter( pt_indices );
@@ -217,7 +260,7 @@ pcl::ProgressiveMorphologicalFilter<PointT>::pmfIteration ( const pcl::PointClou
   extract.setIndices( foo );
   extract.filter( *ground );
 
-  PCL_INFO( "Ground has %d points\n", ground->points.size() );
+  PCL_DEBUG( "ground now has %d points\n", ground->points.size() );
 
   float w_prev = w;
 
@@ -231,7 +274,7 @@ pcl::ProgressiveMorphologicalFilter<PointT>::pmfIteration ( const pcl::PointClou
   if (dh > dh_max)
   { dh = dh_max; }
 
-  PCL_DEBUG( "s = %f; c = %f; w = %f; w_prev = %f; dh = %f; dh_max = %f\n", s, c, w, w_prev, dh, dh_max );
+//  PCL_DEBUG( "s = %f; c = %f; w = %f; w_prev = %f; dh = %f; dh_max = %f\n", s, c, w, w_prev, dh, dh_max );
 
   std::vector<int>
   ground_pts = pmfIteration( *ground, c, b, k, s, dh_0, dh_max, dh, w, w_max, pt_indices, exponential);
@@ -281,7 +324,7 @@ pcl::ProgressiveMorphologicalFilter<PointT>::extract (std::vector <int>& ground)
     w = c * ( 2.0f * k++ * b + 1.0f );
   }
 
-  ground = firstIteration( *input_, c, b, k, s, dh_0, dh_max, dh, w, w_max, exponential );
+  ground = firstIteration( input_, c, b, k, s, dh_0, dh_max, dh, w, w_max, exponential );
 
 /*
   float window_size = 3.0f;

@@ -72,6 +72,9 @@ if (build)
   PCL_ADD_EXECUTABLE (pcl_morphological_erode "${SUBSYS_NAME}" morphological_erode.cpp)
   target_link_libraries (pcl_morphological_erode pcl_common pcl_io pcl_filters)
 
+  PCL_ADD_EXECUTABLE (pcl_progressive_morphological_filter "${SUBSYS_NAME}" progressive_morphological_filter.cpp)
+  target_link_libraries (pcl_progressive_morphological_filter pcl_common pcl_io pcl_filters pcl_segmentation)
+
   PCL_ADD_EXECUTABLE (pcl_extract_feature "${SUBSYS_NAME}" extract_feature.cpp)
   target_link_libraries (pcl_extract_feature pcl_common pcl_io pcl_features pcl_kdtree)
   
