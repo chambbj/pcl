@@ -101,7 +101,7 @@ namespace pcl
       void setInitialDistance(float initial_distance);
 
       std::vector<int>
-      firstIteration( const PointCloud source, float c, float b, int k, float s, float dh_0, float dh_max, float dh, float w, float w_max, bool exponential=true);
+      firstIteration( const typename PointCloud::ConstPtr &source, float c, float b, int k, float s, float dh_0, float dh_max, float dh, float w, float w_max, bool exponential=true);
 
       std::vector<int>
       pmfIteration( const PointCloud source, float c, float b, int k, float s, float dh_0, float dh_max, float dh, float w, float w_max, std::vector<int> indices, bool exponential=true);

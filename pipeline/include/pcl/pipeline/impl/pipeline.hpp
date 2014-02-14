@@ -48,6 +48,7 @@
 #include <boost/foreach.hpp>
 
 #include <pcl/filters/passthrough.h>
+#include <pcl/filters/radius_outlier_removal.h>
 #include <pcl/filters/statistical_outlier_removal.h>
 #include <pcl/filters/voxel_grid.h>
 #include <pcl/io/pcd_io.h>
@@ -101,6 +102,8 @@ pcl::Pipeline<PointT>::applyFilterIndices (std::vector<int> &indices)
 
     BOOST_FOREACH(boost::property_tree::ptree::value_type &vt, pt.get_child("pipeline.filters"))
     {
+      IndicesPtr temp_indices ( new std::vector<int>(indices) );
+
       std::string name = vt.second.get<std::string>("name","");
       std::string help = vt.second.get<std::string>("help","");
 
@@ -113,7 +116,7 @@ pcl::Pipeline<PointT>::applyFilterIndices (std::vector<int> &indices)
 	// initial setup
 	pcl::PassThrough<PointT> pass;
         pass.setInputCloud(input_);
-        pass.setIndices(indices_);
+        pass.setIndices(temp_indices);
 
 	// parse params
         std::string field = vt.second.get<std::string>("setFilterFieldName");
@@ -134,7 +137,7 @@ pcl::Pipeline<PointT>::applyFilterIndices (std::vector<int> &indices)
 	// initial setup
         pcl::StatisticalOutlierRemoval<PointT> sor;
 	sor.setInputCloud(input_);
-	sor.setIndices(indices_);
+	sor.setIndices(temp_indices);
 
 	// parse params
 	int nr_k = vt.second.get<int>("setMeanK", 2);
@@ -147,13 +150,36 @@ pcl::Pipeline<PointT>::applyFilterIndices (std::vector<int> &indices)
         sor.setMeanK(nr_k);
 	sor.setStddevMulThresh(stddev_mult);
 	sor.filter(indices);
+
+        PCL_INFO("      %d points filtered to %d following outlier removal\n", temp_indices->size(), indices.size());
+      }
+      else if (name == "RadiusOutlierRemoval")
+      {
+	// initial setup
+        pcl::RadiusOutlierRemoval<PointT> ror;
+	ror.setInputCloud(input_);
+	ror.setIndices(temp_indices);
+
+	// parse params
+	int min_neighbors = vt.second.get<int>("setMinNeighborsInRadius", 2);
+	double radius = vt.second.get<double>("setRadiusSearch", 1.0);
+
+	// summarize settings
+	PCL_DEBUG("      %d neighbors and %f radius\n", min_neighbors, radius);
+
+	// set params and apply filter
+        ror.setMinNeighborsInRadius(min_neighbors);
+	ror.setRadiusSearch(radius);
+	ror.filter(indices);
+
+        PCL_INFO("      %d points filtered to %d following outlier removal\n", temp_indices->size(), indices.size());
       }
       else if (name == "VoxelGrid")
       {
 	// initial setup
         pcl::VoxelGrid<PointT> vg;
 	vg.setInputCloud(input_);
-	vg.setIndices(indices_);
+	vg.setIndices(temp_indices);
 
 	// parse params
 	float x = vt.second.get<float>("setLeafSize.x", 1.0);
@@ -169,10 +195,13 @@ pcl::Pipeline<PointT>::applyFilterIndices (std::vector<int> &indices)
       }
       else if (name == "ProgressiveMorphologicalFilter")
       {
+        PCL_DEBUG( "pmf\n" );
         pcl::ProgressiveMorphologicalFilter<PointT> pmf;
 	pmf.setInputCloud(input_);
-	pmf.setIndices(indices_);
+	pmf.setIndices(temp_indices);
 	pmf.extract(indices);
+
+        PCL_INFO("      %d points filtered to %d following progressive morphological filter\n", temp_indices->size(), indices.size());
       }
       else
       {
