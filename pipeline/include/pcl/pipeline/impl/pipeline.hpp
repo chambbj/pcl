@@ -51,6 +51,7 @@
 #include <pcl/filters/radius_outlier_removal.h>
 #include <pcl/filters/statistical_outlier_removal.h>
 #include <pcl/filters/voxel_grid.h>
+#include <pcl/filters/grid_minimum.h>
 #include <pcl/io/pcd_io.h>
 #include <pcl/pipeline/pipeline.h>
 #include <pcl/segmentation/progressive_morphological_filter.h>
@@ -104,9 +105,12 @@ pcl::Pipeline<PointT>::applyFilterIndices (std::vector<int> &indices)
 
     BOOST_FOREACH(boost::property_tree::ptree::value_type &vt, pt.get_child("pipeline.filters"))
     {
-      //IndicesPtr temp_indices ( new std::vector<int>(indices) );
       std::vector<int> local_indices;
       typename pcl::PointCloud<PointT>::Ptr local_cloud ( new pcl::PointCloud<PointT>);
+
+      // wish we could always rely on setIndices for individual point cloud operations, but some
+      // (e.g., VoxelGrid) use setIndices for query points only, which isn't exactly what we want,
+      // so instead, we copy from the input cloud to a local cloud using the refined indices vector
       pcl::copyPointCloud<PointT>( *input_, indices, *local_cloud );
 
       PCL_INFO("%d points copied\n",local_cloud->points.size());
@@ -123,7 +127,6 @@ pcl::Pipeline<PointT>::applyFilterIndices (std::vector<int> &indices)
 	// initial setup
 	pcl::PassThrough<PointT> pass;
         pass.setInputCloud(local_cloud);
-        //pass.setIndices(temp_indices);
 
 	// parse params
         std::string field = vt.second.get<std::string>("setFilterFieldName");
@@ -144,7 +147,6 @@ pcl::Pipeline<PointT>::applyFilterIndices (std::vector<int> &indices)
 	// initial setup
         pcl::StatisticalOutlierRemoval<PointT> sor;
 	sor.setInputCloud(local_cloud);
-	//sor.setIndices(temp_indices);
 
 	// parse params
 	int nr_k = vt.second.get<int>("setMeanK", 2);
@@ -165,7 +167,6 @@ pcl::Pipeline<PointT>::applyFilterIndices (std::vector<int> &indices)
 	// initial setup
         pcl::RadiusOutlierRemoval<PointT> ror;
 	ror.setInputCloud(local_cloud);
-	//ror.setIndices(temp_indices);
 
 	// parse params
 	int min_neighbors = vt.second.get<int>("setMinNeighborsInRadius", 2);
@@ -186,7 +187,6 @@ pcl::Pipeline<PointT>::applyFilterIndices (std::vector<int> &indices)
 	// initial setup
         pcl::VoxelGrid<PointT> vg;
 	vg.setInputCloud(local_cloud);
-	//vg.setIndices(temp_indices);
 
 	// parse params
 	float x = vt.second.get<float>("setLeafSize.x", 1.0);
@@ -200,12 +200,29 @@ pcl::Pipeline<PointT>::applyFilterIndices (std::vector<int> &indices)
 	vg.setLeafSize(x, y, z);
 	//vg.filter(local_indices);
       }
+      else if (name == "GridMinimum")
+      {
+	// initial setup
+        pcl::GridMinimum<PointT> vgm;
+	vgm.setInputCloud(local_cloud);
+
+	// parse params
+	float x = vt.second.get<float>("setLeafSize.x", 1.0);
+	float y = vt.second.get<float>("setLeafSize.y", 1.0);
+	float z = vt.second.get<float>("setLeafSize.z", 1.0);
+
+	// summarize settings
+	PCL_DEBUG("      leaf size: %f, %f, %f\n", x, y, z);
+
+	// set params and apply filter
+	vgm.setLeafSize(x, y, z);
+	vgm.filter(local_indices);
+      }
       else if (name == "ProgressiveMorphologicalFilter")
       {
         PCL_DEBUG( "pmf\n" );
         pcl::ProgressiveMorphologicalFilter<PointT> pmf;
 	pmf.setInputCloud(local_cloud);
-	//pmf.setIndices(temp_indices);
 	pmf.extract(local_indices);
 
         PCL_INFO("      %d points filtered to %d following progressive morphological filter\n", indices.size(), local_indices.size());
