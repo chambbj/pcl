@@ -54,8 +54,8 @@ if (build)
   PCL_ADD_EXECUTABLE (pcl_voxel_grid "${SUBSYS_NAME}" voxel_grid.cpp)
   target_link_libraries (pcl_voxel_grid pcl_common pcl_io pcl_filters)
 
-  PCL_ADD_EXECUTABLE (pcl_grid_minimum "${SUBSYS_NAME}" grid_minimum.cpp)
-  target_link_libraries (pcl_grid_minimum pcl_common pcl_io pcl_filters)
+  #PCL_ADD_EXECUTABLE (pcl_grid_minimum "${SUBSYS_NAME}" grid_minimum.cpp)
+  #target_link_libraries (pcl_grid_minimum pcl_common pcl_io pcl_filters)
 
   PCL_ADD_EXECUTABLE (pcl_passthrough_filter "${SUBSYS_NAME}" passthrough_filter.cpp)
   target_link_libraries (pcl_passthrough_filter pcl_common pcl_io pcl_filters)
