@@ -46,7 +46,7 @@
 #include <pcl/point_types.h>
 
 // Instantiations of specific point types
-PCL_INSTANTIATE(Pipeline, PCL_XYZ_POINT_TYPES)
+PCL_INSTANTIATE(Pipeline, (pcl::PointNormal)(pcl::PointXYZRGBNormal)(pcl::PointXYZINormal))
 
 #endif    // PCL_NO_PRECOMPILE
 
