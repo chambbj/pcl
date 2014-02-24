@@ -59,10 +59,10 @@ namespace pcl
     * \ingroup pipeline
     */
   template <typename PointT>
-  class Pipeline : public FilterIndices<PointT>
+  class Pipeline : public Filter<PointT>
   {
     protected:
-      typedef typename FilterIndices<PointT>::PointCloud PointCloud;
+      typedef typename Filter<PointT>::PointCloud PointCloud;
       typedef typename PointCloud::Ptr PointCloudPtr;
       typedef typename PointCloud::ConstPtr PointCloudConstPtr;
       typedef typename pcl::traits::fieldList<PointT>::type FieldList;
@@ -76,8 +76,7 @@ namespace pcl
       /** \brief Constructor.
         * \param[in] extract_removed_indices Set to true if you want to be able to extract the indices of points being removed (default = false).
         */
-      Pipeline (bool extract_removed_indices = false) :
-        FilterIndices<PointT>::FilterIndices (extract_removed_indices)
+      Pipeline ()
       {
         filter_name_ = "Pipeline";
       }
@@ -96,29 +95,12 @@ namespace pcl
       using PCLBase<PointT>::indices_;
       using Filter<PointT>::filter_name_;
       using Filter<PointT>::getClassName;
-      using FilterIndices<PointT>::extract_removed_indices_;
-      using FilterIndices<PointT>::removed_indices_;
 
       /** \brief Filtered results are stored in a separate point cloud.
         * \param[out] output The resultant point cloud.
         */
       void
       applyFilter (PointCloud &output);
-
-      /** \brief Filtered results are indexed by an indices array.
-        * \param[out] indices The resultant indices.
-        */
-      void
-      applyFilter (std::vector<int> &indices)
-      {
-        applyFilterIndices (indices);
-      }
-
-      /** \brief Filtered results are indexed by an indices array.
-        * \param[out] indices The resultant indices.
-        */
-      void
-      applyFilterIndices (std::vector<int> &indices);
 
     private:
       /** \brief The name of the JSON file describing the PCL pipeline. */
@@ -142,8 +124,7 @@ namespace pcl
 
     public:
       /** \brief Constructor. */
-      Pipeline (bool extract_removed_indices = false) :
-        Filter<pcl::PCLPointCloud2>::Filter (extract_removed_indices),
+      Pipeline () :
 	filename_ ("")
       {
         filter_name_ = "Pipeline";
