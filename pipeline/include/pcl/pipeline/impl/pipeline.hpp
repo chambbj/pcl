@@ -52,6 +52,7 @@
 
 #include <pcl/features/normal_3d.h>
 #include <pcl/filters/conditional_removal.h>
+#include <pcl/filters/extract_indices.h>
 #include <pcl/filters/passthrough.h>
 #include <pcl/filters/radius_outlier_removal.h>
 #include <pcl/filters/statistical_outlier_removal.h>
@@ -122,6 +123,24 @@ pcl::Pipeline<PointT>::applyFilter (PointCloud &output)
 	// summarize settings
 	PCL_DEBUG("      Field name: %s\n", field.c_str());
         PCL_DEBUG("      Limits: %f, %f\n", m1, m2);
+
+        if (field.compare("x") == 0)
+        {
+          if (m1 != -std::numeric_limits<float>::max ()) m1 -= x_offset_;
+          if (m2 != std::numeric_limits<float>::max ()) m2 -= x_offset_;
+        }
+
+        if (field.compare("y") == 0)
+        {
+          if (m1 != -std::numeric_limits<float>::max ()) m1 -= y_offset_;
+          if (m2 != std::numeric_limits<float>::max ()) m2 -= y_offset_;
+        }
+
+        if (field.compare("z") == 0)
+        {
+          if (m1 != -std::numeric_limits<float>::max ()) m1 -= z_offset_;
+          if (m2 != std::numeric_limits<float>::max ()) m2 -= z_offset_;
+        }
 	
 	// set params and apply filter
 	pass.setFilterFieldName(field);
@@ -207,9 +226,20 @@ pcl::Pipeline<PointT>::applyFilter (PointCloud &output)
       else if (name == "ProgressiveMorphologicalFilter")
       {
         PCL_DEBUG( "pmf\n" );
-//        pcl::ProgressiveMorphologicalFilter<PointT> pmf;
-//	pmf.setInputCloud(cloud);
-//	pmf.extract(*cloud_f);
+        pcl::ProgressiveMorphologicalFilter<PointT> pmf;
+        pmf.setInputCloud(cloud);
+
+        std::vector<int> ground;
+        pmf.extract(ground);
+
+        PointIndicesPtr idx( new PointIndices );
+        idx->indices = ground;
+
+        pcl::ExtractIndices<PointT> extract;
+        extract.setInputCloud(cloud);
+        extract.setIndices(idx);
+        extract.setNegative(false);
+        extract.filter(*cloud_f);
 
         PCL_INFO("      %d points filtered to %d following progressive morphological filter\n", cloud->points.size(), cloud_f->points.size());
       }
@@ -289,6 +319,12 @@ pcl::Pipeline<PointT>::applyFilter (PointCloud &output)
       }
 
       cloud.swap (cloud_f);
+
+      if (cloud->points.size() == 0)
+      {
+        PCL_WARN ("No points in filtered cloud. Skipping remaining filters...\n");
+        break;
+      }
     }
 
     PCL_INFO("\n");

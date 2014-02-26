@@ -90,6 +90,16 @@ namespace pcl
         filename_ = filename;
       }
 
+      /** \brief Set offsets
+        */
+      inline void
+      setOffsets (const double x, const double y, const double z)
+      {
+        x_offset_ = x;
+        y_offset_ = y;
+        z_offset_ = z;
+      }
+
     protected:
       using PCLBase<PointT>::input_;
       using PCLBase<PointT>::indices_;
@@ -105,6 +115,8 @@ namespace pcl
     private:
       /** \brief The name of the JSON file describing the PCL pipeline. */
       std::string filename_;
+
+      double x_offset_, y_offset_, z_offset_;
   };
 
   ////////////////////////////////////////////////////////////////////////////////////////////
@@ -139,6 +151,16 @@ namespace pcl
         filename_ = filename;
       }
 
+      /** \brief Set offsets
+        */
+      inline void
+      setOffsets (const double x, const double y, const double z)
+      {
+        x_offset_ = x;
+        y_offset_ = y;
+        z_offset_ = z;
+      }
+
     protected:
       void
       applyFilter (PCLPointCloud2 &output);
@@ -146,6 +168,8 @@ namespace pcl
     private:
       /** \brief The name of the JSON file describing the PCL pipeline. */
       std::string filename_;
+
+      double x_offset_, y_offset_, z_offset_;
   };
 }
 
