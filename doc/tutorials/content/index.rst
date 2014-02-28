@@ -571,6 +571,21 @@ I/O
      .. |i_o6| image:: images/dinast_cyclopes.png
                :height: 100px
 
+  * :ref:`pcl_json_specification`
+
+     ======  ======
+     |i_o7|  Title: **Draft PCL JSON Specification**
+
+             Author: *Bradley J. Chambers*
+
+             Compatibility: > PCL 1.7.1
+
+             This document describes the draft PCL JSON specification, and the way it is used inside PCL.
+     ======  ======
+     
+     .. |i_o7| image:: images/PCD_icon.png
+               :height: 100px
+
 
 .. _keypoints_tutorial:
 
