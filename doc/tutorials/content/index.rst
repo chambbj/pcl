@@ -24,6 +24,7 @@ Table of contents
   * :ref:`keypoints_tutorial`
   * :ref:`kdtree_tutorial`
   * :ref:`octree_tutorial`
+  * :ref:`pipeline_tutorial`
   * :ref:`range_images`
   * :ref:`recognition_tutorial`
   * :ref:`registration_tutorial`
@@ -601,6 +602,21 @@ I/O
      .. |i_o6| image:: images/dinast_cyclopes.png
                :height: 100px
 
+  * :ref:`pcl_json_specification`
+
+     ======  ======
+     |i_o7|  Title: **Draft PCL JSON Specification**
+
+             Author: *Bradley J. Chambers*
+
+             Compatibility: > PCL 1.7.1
+
+             This document describes the draft PCL JSON specification, and the way it is used inside PCL.
+     ======  ======
+     
+     .. |i_o7| image:: images/PCD_icon.png
+               :height: 100px
+
 
 .. _keypoints_tutorial:
 
@@ -691,6 +707,23 @@ Octree
      
      .. |oc_3| image:: images/changedetectionThumb.png
                :height: 100px
+
+.. _pipeline_tutorial:
+
+Pipeline
+--------
+
+  * :ref:`pipeline_overview`
+
+     ======  ======
+     |p_1|   Title: **Pipeline Overview**
+
+             Author: *Brad Chambers*
+
+             Compatibility: >= PCL 1.8
+             
+             This tutorial presents an overview of the pipeline module.
+     ======  ======
 
 .. _range_images:
 
