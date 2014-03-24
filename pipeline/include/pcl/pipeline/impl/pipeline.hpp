@@ -51,6 +51,7 @@
 #include <pcl/for_each_type.h>
 #include <pcl/point_traits.h>
 
+#include <pcl/common/common.h>
 #include <pcl/features/normal_3d.h>
 #include <pcl/filters/conditional_removal.h>
 #include <pcl/filters/extract_indices.h>
@@ -63,6 +64,19 @@
 #include <pcl/pipeline/pipeline.h>
 #include <pcl/search/search.h>
 #include <pcl/segmentation/progressive_morphological_filter.h>
+
+namespace pipeline
+{
+  struct tile_point_idx 
+  {
+    unsigned int tile_idx;
+    unsigned int point_idx;
+
+    tile_point_idx (unsigned int tile_idx_, unsigned int point_idx_) : tile_idx (tile_idx_), point_idx (point_idx_) {}
+    bool operator < (const tile_point_idx &p) const { return (tile_idx < p.tile_idx); }
+  };
+}
+
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 template <typename PointT> void
@@ -79,10 +93,6 @@ pcl::Pipeline<PointT>::applyFilter (PointCloud &output)
 
   output.is_dense = true;
 
-  typename pcl::PointCloud<PointT>::Ptr cloud (new pcl::PointCloud<PointT>);
-  typename pcl::PointCloud<PointT>::Ptr cloud_f (new pcl::PointCloud<PointT>);
-  pcl::copyPointCloud<PointT> (*input_, *indices_, *cloud);
-
   try
   {
     PCL_DEBUG ("\n");
@@ -92,232 +102,390 @@ pcl::Pipeline<PointT>::applyFilter (PointCloud &output)
     PCL_DEBUG ("AUTHOR: %s\n", pt_.get<std::string> ("pipeline.author","").c_str ());
     PCL_DEBUG ("--------------------------------------------------------------------------------\n");
 
-    int step = 1;
+    // generate tile indices, can use vector of PointIndices (itself a vector of indices belonging to each tile)
+    std::vector<PointIndices> tile_indices;
 
-    BOOST_FOREACH (boost::property_tree::ptree::value_type &vt, pt_.get_child ("pipeline.filters"))
+    leaf_size_[0] = 100.0f;
+    leaf_size_[1] = 100.0f;
+    leaf_size_[2] = 100.0f;
+    leaf_size_[3] = 100.0f;
+
+    inverse_leaf_size_ = Eigen::Array4f::Ones () / leaf_size_.array ();
+
+    PCL_DEBUG ("experimental, tiling with leaf size 100\n");
+
+    Eigen::Vector4f min_p, max_p;
+    // Get the minimum and maximum dimensions
+    pcl::getMinMax3D<PointT> (*input_, *indices_, min_p, max_p);
+
+    // Check that the leaf size is not too small, given the size of the data
+    int64_t dx = static_cast<int64_t>((max_p[0] - min_p[0]) * inverse_leaf_size_[0])+1;
+    int64_t dy = static_cast<int64_t>((max_p[1] - min_p[1]) * inverse_leaf_size_[1])+1;
+
+    if ((dx*dy) > static_cast<int64_t>(std::numeric_limits<int32_t>::max()))
     {
-      std::string name = vt.second.get<std::string> ("name", "");
-      std::string help = vt.second.get<std::string> ("help", "");
+        PCL_WARN("[pcl::%s::applyFilter] Leaf size is too small for the input dataset. Integer indices would overflow.", getClassName().c_str());
+        // is this really relevant anymore? don't think so, but maybe something like it
+        //output = *input_;
+        return;
+    }
 
-      PCL_DEBUG ("\n");
-      PCL_DEBUG ("   Step %d) %s\n", step++, name.c_str ());
-      PCL_DEBUG ("      %s\n", help.c_str ());
+    // Compute the minimum and maximum bounding box values
+    min_b_[0] = static_cast<int> (floor (min_p[0] * inverse_leaf_size_[0]));
+    max_b_[0] = static_cast<int> (floor (max_p[0] * inverse_leaf_size_[0]));
+    min_b_[1] = static_cast<int> (floor (min_p[1] * inverse_leaf_size_[1]));
+    max_b_[1] = static_cast<int> (floor (max_p[1] * inverse_leaf_size_[1]));
 
-      if (name == "PassThrough")
-      {
-	// initial setup
-	pcl::PassThrough<PointT> pass;
-        pass.setInputCloud (cloud);
+    // Compute the number of divisions needed along all axis
+    div_b_ = max_b_ - min_b_ + Eigen::Vector4i::Ones ();
+    div_b_[3] = 0;
 
-	// parse params
-        std::string field = vt.second.get<std::string> ("setFilterFieldName");
-	float m1 = vt.second.get<float> ("setFilterLimits.min", -std::numeric_limits<float>::max ());
-	float m2 = vt.second.get<float> ("setFilterLimits.max", std::numeric_limits<float>::max ());
-        
-	// summarize settings
-	PCL_DEBUG ("      Field name: %s\n", field.c_str ());
-        PCL_DEBUG ("      Limits: %f, %f\n", m1, m2);
+    PCL_DEBUG ("%d and %d divisions in x and y\n", div_b_[0], div_b_[1]);
 
-        if (field.compare ("x") == 0)
+    // Set up the division multiplier
+    divb_mul_ = Eigen::Vector4i (1, div_b_[0], div_b_[0] * div_b_[1], 0);
+
+    std::vector<pipeline::tile_point_idx> index_vector;
+    index_vector.reserve (indices_->size ());
+
+    // First pass: go over all points and insert them into the index_vector vector
+    // with calculated idx. Points with the same idx value will contribute to the
+    // same point of resulting CloudPoint
+    for (std::vector<int>::const_iterator it = indices_->begin (); it != indices_->end (); ++it)
+    {
+      if (!input_->is_dense)
+        // Check if the point is invalid
+        if (!pcl_isfinite (input_->points[*it].x) || 
+            !pcl_isfinite (input_->points[*it].y) || 
+            !pcl_isfinite (input_->points[*it].z))
+          continue;
+
+      int ijk0 = static_cast<int> (floor (input_->points[*it].x * inverse_leaf_size_[0]) - static_cast<float> (min_b_[0]));
+      int ijk1 = static_cast<int> (floor (input_->points[*it].y * inverse_leaf_size_[1]) - static_cast<float> (min_b_[1]));
+
+      // Compute the centroid leaf index
+      int idx = ijk0 * divb_mul_[0] + ijk1 * divb_mul_[1];
+      index_vector.push_back (pipeline::tile_point_idx (static_cast<unsigned int> (idx), *it));
+    }
+
+    // Second pass: sort the index_vector vector using value representing target cell as index
+    // in effect all points belonging to the same output cell will be next to each other
+    std::sort (index_vector.begin (), index_vector.end (), std::less<pipeline::tile_point_idx> ());
+
+    // Third pass: count output cells
+    // we need to skip all the same, adjacenent idx values
+    unsigned int index = 0;
+    // first_and_last_indices_vector[i] represents the index in index_vector of the first point in
+    // index_vector belonging to the voxel which corresponds to the i-th output point,
+    // and of the first point not belonging to.
+    std::vector<std::pair<unsigned int, unsigned int> > first_and_last_indices_vector;
+    // Worst case size
+    first_and_last_indices_vector.reserve (index_vector.size ());
+    while (index < index_vector.size ()) 
+    {
+        unsigned int i = index + 1;
+        while (i < index_vector.size () && index_vector[i].tile_idx == index_vector[index].tile_idx) 
+            ++i;
+        first_and_last_indices_vector.push_back (std::pair<unsigned int, unsigned int> (index, i));
+        index = i;
+    }
+
+    tile_indices.resize (first_and_last_indices_vector.size ());
+
+    for (unsigned int cp = 0; cp < first_and_last_indices_vector.size (); ++cp)
+    {
+        // calculate centroid - sum values from all input points, that have the same idx value in index_vector array
+        unsigned int first_index = first_and_last_indices_vector[cp].first;
+        unsigned int last_index = first_and_last_indices_vector[cp].second;
+
+        tile_indices[cp].indices.resize (last_index - first_index);
+
+        PCL_DEBUG ("tile %d will have %d points\n", cp, last_index - first_index);
+
+        index = 0;
+
+        for (unsigned int i = first_index + 1; i < last_index; ++i) 
         {
-          if (m1 != -std::numeric_limits<float>::max ()) m1 -= x_offset_;
-          if (m2 != std::numeric_limits<float>::max ()) m2 -= x_offset_;
+            tile_indices[cp].indices[index] = index_vector[i].point_idx;
+            ++index;
         }
+    }
+    
+    // loop over each tile (each PointIndices)
+#pragma omp parallel for shared(output) num_threads(4)
+    for (unsigned int tile = 0; tile < tile_indices.size(); ++tile)
+    {
+      typename pcl::PointCloud<PointT>::Ptr cloud (new pcl::PointCloud<PointT>);
+      typename pcl::PointCloud<PointT>::Ptr cloud_f (new pcl::PointCloud<PointT>);
 
-        if (field.compare ("y") == 0)
+      // move the copyPointCloud at line 84 here, and only copy the indices belonging to the current tile (and somehow marry that with the *indices_)
+      pcl::copyPointCloud<PointT> (*input_, tile_indices[tile].indices, *cloud);
+
+      PCL_DEBUG ("process tile %d through the pipeline\n", tile);
+      
+      int step = 1;
+
+      BOOST_FOREACH (boost::property_tree::ptree::value_type &vt, pt_.get_child ("pipeline.filters"))
+      {
+        std::string name = vt.second.get<std::string> ("name", "");
+        std::string help = vt.second.get<std::string> ("help", "");
+
+        PCL_DEBUG ("\n");
+        PCL_DEBUG ("   Step %d) %s\n", step++, name.c_str ());
+        PCL_DEBUG ("      %s\n", help.c_str ());
+
+        if (name == "PassThrough")
         {
-          if (m1 != -std::numeric_limits<float>::max ()) m1 -= y_offset_;
-          if (m2 != std::numeric_limits<float>::max ()) m2 -= y_offset_;
-        }
+          // initial setup
+          pcl::PassThrough<PointT> pass;
+          pass.setInputCloud (cloud);
 
-        if (field.compare ("z") == 0)
-        {
-          if (m1 != -std::numeric_limits<float>::max ()) m1 -= z_offset_;
-          if (m2 != std::numeric_limits<float>::max ()) m2 -= z_offset_;
-        }
-	
-	// set params and apply filter
-	pass.setFilterFieldName (field);
-	pass.setFilterLimits (m1, m2);
-        pass.filter (*cloud_f);
-      }
-      else if (name == "StatisticalOutlierRemoval")
-      {
-	// initial setup
-        pcl::StatisticalOutlierRemoval<PointT> sor;
-	sor.setInputCloud (cloud);
-
-	// parse params
-	int nr_k = vt.second.get<int> ("setMeanK", 2);
-	double stddev_mult = vt.second.get<double> ("setStddevMulThresh", 0.0);
-
-	// summarize settings
-	PCL_DEBUG ("      %d neighbors and %f multiplier\n", nr_k, stddev_mult);
-
-	// set params and apply filter
-        sor.setMeanK (nr_k);
-	sor.setStddevMulThresh (stddev_mult);
-	sor.filter (*cloud_f);
-
-        PCL_DEBUG ("      %d points filtered to %d following outlier removal\n", cloud->points.size (), cloud_f->points.size ());
-      }
-      else if (name == "RadiusOutlierRemoval")
-      {
-	// initial setup
-        pcl::RadiusOutlierRemoval<PointT> ror;
-	ror.setInputCloud (cloud);
-
-	// parse params
-	int min_neighbors = vt.second.get<int> ("setMinNeighborsInRadius", 2);
-	double radius = vt.second.get<double> ("setRadiusSearch", 1.0);
-
-	// summarize settings
-	PCL_DEBUG ("      %d neighbors and %f radius\n", min_neighbors, radius);
-
-	// set params and apply filter
-        ror.setMinNeighborsInRadius (min_neighbors);
-	ror.setRadiusSearch (radius);
-	ror.filter (*cloud_f);
-
-        PCL_DEBUG ("      %d points filtered to %d following outlier removal\n", cloud->points.size (), cloud_f->points.size ());
-      }
-      else if (name == "VoxelGrid")
-      {
-	// initial setup
-        pcl::VoxelGrid<PointT> vg;
-	vg.setInputCloud (cloud);
-
-	// parse params
-	float x = vt.second.get<float> ("setLeafSize.x", 1.0);
-	float y = vt.second.get<float> ("setLeafSize.y", 1.0);
-	float z = vt.second.get<float> ("setLeafSize.z", 1.0);
-
-	// summarize settings
-	PCL_DEBUG ("      leaf size: %f, %f, %f\n", x, y, z);
-
-	// set params and apply filter
-	vg.setLeafSize (x, y, z);
-	vg.filter (*cloud_f);
-      }
-      else if (name == "GridMinimum")
-      {
-	// initial setup
-        pcl::GridMinimum<PointT> vgm;
-	vgm.setInputCloud (cloud);
-
-	// parse params
-	float x = vt.second.get<float> ("setLeafSize.x", 1.0);
-	float y = vt.second.get<float> ("setLeafSize.y", 1.0);
-
-	// summarize settings
-	PCL_DEBUG ("      leaf size: %f, %f\n", x, y);
-
-	// set params and apply filter
-	vgm.setLeafSize (x, y);
-	vgm.filter (*cloud_f);
-      }
-      else if (name == "ProgressiveMorphologicalFilter")
-      {
-        PCL_DEBUG ( "pmf\n" );
-        pcl::ProgressiveMorphologicalFilter<PointT> pmf;
-        pmf.setInputCloud (cloud);
-
-        std::vector<int> ground;
-        pmf.extract (ground);
-
-        PointIndicesPtr idx (new PointIndices);
-        idx->indices = ground;
-
-        pcl::ExtractIndices<PointT> extract;
-        extract.setInputCloud (cloud);
-        extract.setIndices (idx);
-        extract.setNegative (false);
-        extract.filter (*cloud_f);
-
-        PCL_DEBUG ("      %d points filtered to %d following progressive morphological filter\n", cloud->points.size (), cloud_f->points.size ());
-      }
-      else if (name == "NormalEstimation")
-      {
-        if (pcl::traits::has_normal<PointT>::value && pcl::traits::has_curvature<PointT>::value)
-        {
           // parse params
-          float r = vt.second.get<float> ("setRadiusSearch", 1.0);
-          float k = vt.second.get<float> ("setKSearch", 0);
-
-          PCL_DEBUG ("      radius: %f\n", r);
-
-          pcl::PointCloud<pcl::Normal>::Ptr normals (new pcl::PointCloud<pcl::Normal>);
-
-          typename pcl::search::KdTree<PointT>::Ptr tree (new pcl::search::KdTree<PointT> ());
-          pcl::NormalEstimation<PointT, pcl::Normal> ne;
-          ne.setInputCloud (cloud);
-          //ne.setSearchSurface (cloud); // or maybe not
-          ne.setViewPoint (0.0f, 0.0f, std::numeric_limits<float>::max ());
-          ne.setSearchMethod (tree);
-          ne.setRadiusSearch (r);
-          ne.setKSearch (k);
-          ne.compute (*normals);
-
-          pcl::concatenateFields (*cloud, *normals, *cloud_f);
-        }
-        else
-        {
-          PCL_ERROR ("Requested point type does not support NormalEstimation...\n");
-        }
-      }
-      else if (name == "ConditionalRemoval")
-      {
-        typename pcl::ConditionAnd<PointT>::Ptr cond (new pcl::ConditionAnd<PointT> ());
-
-        if (pcl::traits::has_normal<PointT>::value)
-        {
-          // parse params 
-          float m1 = vt.second.get<float> ("normalZ.min", 0);
-          float m2 = vt.second.get<float> ("normalZ.max", std::numeric_limits<float>::max ());
+          std::string field = vt.second.get<std::string> ("setFilterFieldName");
+          float m1 = vt.second.get<float> ("setFilterLimits.min", -std::numeric_limits<float>::max ());
+          float m2 = vt.second.get<float> ("setFilterLimits.max", std::numeric_limits<float>::max ());
           
           // summarize settings
+          PCL_DEBUG ("      Field name: %s\n", field.c_str ());
           PCL_DEBUG ("      Limits: %f, %f\n", m1, m2);
 
-          typedef typename pcl::traits::fieldList<PointT>::type FieldList;
-          float min_normal_z = std::numeric_limits<float>::max ();
-          float max_normal_z = -std::numeric_limits<float>::max ();
-          for (int ii = 0; ii < cloud->points.size (); ++ii)
+          if (field.compare ("x") == 0)
           {
-            bool has_normal_z = false;
-            float normal_z_val = 0.0f;
-            pcl::for_each_type<FieldList> (pcl::CopyIfFieldExists<PointT, float> (cloud->points[ii], "normal_z", has_normal_z, normal_z_val));
-            if (has_normal_z)
-            {
-              if (normal_z_val < min_normal_z) min_normal_z = normal_z_val;
-              if (normal_z_val > max_normal_z) max_normal_z = normal_z_val;
-            }
+            if (m1 != -std::numeric_limits<float>::max ()) m1 -= x_offset_;
+            if (m2 != std::numeric_limits<float>::max ()) m2 -= x_offset_;
           }
-          PCL_DEBUG ("min/max normal_z [%f, %f]\n", min_normal_z, max_normal_z);
 
-          cond->addComparison (typename pcl::FieldComparison<PointT>::ConstPtr (new pcl::FieldComparison<PointT> ("normal_z", pcl::ComparisonOps::GT, m1)));
-          cond->addComparison (typename pcl::FieldComparison<PointT>::ConstPtr (new pcl::FieldComparison<PointT> ("normal_z", pcl::ComparisonOps::LT, m2)));
+          if (field.compare ("y") == 0)
+          {
+            if (m1 != -std::numeric_limits<float>::max ()) m1 -= y_offset_;
+            if (m2 != std::numeric_limits<float>::max ()) m2 -= y_offset_;
+          }
+
+          if (field.compare ("z") == 0)
+          {
+            if (m1 != -std::numeric_limits<float>::max ()) m1 -= z_offset_;
+            if (m2 != std::numeric_limits<float>::max ()) m2 -= z_offset_;
+          }
+
+          // set params and apply filter
+          pass.setFilterFieldName (field);
+          pass.setFilterLimits (m1, m2);
+          pass.filter (*cloud_f);
+
+          PCL_DEBUG ("%d filtered to %d in passthrough\n", cloud->points.size(), cloud_f->points.size());
+        }
+        else if (name == "StatisticalOutlierRemoval")
+        {
+          // initial setup
+          pcl::StatisticalOutlierRemoval<PointT> sor;
+          sor.setInputCloud (cloud);
+
+          // parse params
+          int nr_k = vt.second.get<int> ("setMeanK", 2);
+          double stddev_mult = vt.second.get<double> ("setStddevMulThresh", 0.0);
+
+          // summarize settings
+          PCL_DEBUG ("      %d neighbors and %f multiplier\n", nr_k, stddev_mult);
+
+          // set params and apply filter
+          sor.setMeanK (nr_k);
+          sor.setStddevMulThresh (stddev_mult);
+          sor.filter (*cloud_f);
+
+          PCL_DEBUG ("      %d points filtered to %d following outlier removal\n", cloud->points.size (), cloud_f->points.size ());
+        }
+        else if (name == "RadiusOutlierRemoval")
+        {
+          // initial setup
+          pcl::RadiusOutlierRemoval<PointT> ror;
+          ror.setInputCloud (cloud);
+
+          // parse params
+          int min_neighbors = vt.second.get<int> ("setMinNeighborsInRadius", 2);
+          double radius = vt.second.get<double> ("setRadiusSearch", 1.0);
+
+          // summarize settings
+          PCL_DEBUG ("      %d neighbors and %f radius\n", min_neighbors, radius);
+
+          // set params and apply filter
+          ror.setMinNeighborsInRadius (min_neighbors);
+          ror.setRadiusSearch (radius);
+          ror.filter (*cloud_f);
+
+          PCL_DEBUG ("      %d points filtered to %d following outlier removal\n", cloud->points.size (), cloud_f->points.size ());
+        }
+        else if (name == "VoxelGrid")
+        {
+          // initial setup
+          pcl::VoxelGrid<PointT> vg;
+          vg.setInputCloud (cloud);
+
+          // parse params
+          float x = vt.second.get<float> ("setLeafSize.x", 1.0);
+          float y = vt.second.get<float> ("setLeafSize.y", 1.0);
+          float z = vt.second.get<float> ("setLeafSize.z", 1.0);
+
+          // summarize settings
+          PCL_DEBUG ("      leaf size: %f, %f, %f\n", x, y, z);
+
+          // set params and apply filter
+          vg.setLeafSize (x, y, z);
+          vg.filter (*cloud_f);
+        }
+        else if (name == "GridMinimum")
+        {
+          // initial setup
+          pcl::GridMinimum<PointT> vgm;
+          vgm.setInputCloud (cloud);
+
+          // parse params
+          float x = vt.second.get<float> ("setLeafSize.x", 1.0);
+          float y = vt.second.get<float> ("setLeafSize.y", 1.0);
+
+          // summarize settings
+          PCL_DEBUG ("      leaf size: %f, %f\n", x, y);
+
+          // set params and apply filter
+          vgm.setLeafSize (x, y);
+          vgm.filter (*cloud_f);
+        }
+        else if (name == "ProgressiveMorphologicalFilter")
+        {
+          PCL_DEBUG ( "pmf\n" );
+          pcl::ProgressiveMorphologicalFilter<PointT> pmf;
+          pmf.setInputCloud (cloud);
+
+          // parse params
+          int w = vt.second.get<int> ("setMaxWindowSize", 33);
+          float s = vt.second.get<float> ("setSlope", 1.0);
+          float md = vt.second.get<float> ("setMaxDistance", 2.5);
+          float id = vt.second.get<float> ("setInitialDistance", 0.15);
+          float c = vt.second.get<float> ("setCellSize", 1.0);
+          float b = vt.second.get<float> ("setBase", 2.0);
+          bool e = vt.second.get<bool> ("setExponential", true);
+
+          // summarize settings
+          PCL_DEBUG ("      max window size: %d\n", w);
+          PCL_DEBUG ("      slope: %f\n", s);
+          PCL_DEBUG ("      max distance: %f\n", md);
+          PCL_DEBUG ("      initial distance: %f\n", id);
+          PCL_DEBUG ("      cell size: %f\n", c);
+          PCL_DEBUG ("      base: %f\n", b);
+          PCL_DEBUG ("      exponential: %s\n", e?"true":"false");
+
+          pmf.setMaxWindowSize(w);
+          pmf.setSlope(s);
+          pmf.setMaxDistance(md);
+          pmf.setInitialDistance(id);
+          pmf.setCellSize(c);
+          pmf.setBase(b);
+          pmf.setExponential(e);
+
+          std::vector<int> ground;
+          pmf.extract (ground);
+
+          PointIndicesPtr idx ( new PointIndices );
+          idx->indices = ground;
+
+          pcl::ExtractIndices<PointT> extract;
+          extract.setInputCloud (cloud);
+          extract.setIndices (idx);
+          extract.setNegative (false);
+          extract.filter (*cloud_f);
+
+          PCL_DEBUG ("      %d points filtered to %d following progressive morphological filter\n", cloud->points.size (), cloud_f->points.size ());
+        }
+        else if (name == "NormalEstimation")
+        {
+          if (pcl::traits::has_normal<PointT>::value && pcl::traits::has_curvature<PointT>::value)
+          {
+            // parse params
+            float r = vt.second.get<float> ("setRadiusSearch", 1.0);
+            float k = vt.second.get<float> ("setKSearch", 0);
+
+            PCL_DEBUG ("      radius: %f\n", r);
+
+            pcl::PointCloud<pcl::Normal>::Ptr normals (new pcl::PointCloud<pcl::Normal>);
+
+            typename pcl::search::KdTree<PointT>::Ptr tree (new pcl::search::KdTree<PointT> ());
+            pcl::NormalEstimation<PointT, pcl::Normal> ne;
+            ne.setInputCloud (cloud);
+            //ne.setSearchSurface (cloud); // or maybe not
+            ne.setViewPoint (0.0f, 0.0f, std::numeric_limits<float>::max ());
+            ne.setSearchMethod (tree);
+            ne.setRadiusSearch (r);
+            ne.setKSearch (k);
+            ne.compute (*normals);
+
+            pcl::concatenateFields (*cloud, *normals, *cloud_f);
+          }
+          else
+          {
+            PCL_ERROR ("Requested point type does not support NormalEstimation...\n");
+          }
+        }
+        else if (name == "ConditionalRemoval")
+        {
+          typename pcl::ConditionAnd<PointT>::Ptr cond (new pcl::ConditionAnd<PointT> ());
+
+          if (pcl::traits::has_normal<PointT>::value)
+          {
+            // parse params 
+            float m1 = vt.second.get<float> ("normalZ.min", 0);
+            float m2 = vt.second.get<float> ("normalZ.max", std::numeric_limits<float>::max ());
+            
+            // summarize settings
+            PCL_DEBUG ("      Limits: %f, %f\n", m1, m2);
+
+            typedef typename pcl::traits::fieldList<PointT>::type FieldList;
+            float min_normal_z = std::numeric_limits<float>::max ();
+            float max_normal_z = -std::numeric_limits<float>::max ();
+            for (int ii = 0; ii < cloud->points.size (); ++ii)
+            {
+              bool has_normal_z = false;
+              float normal_z_val = 0.0f;
+              pcl::for_each_type<FieldList> (pcl::CopyIfFieldExists<PointT, float> (cloud->points[ii], "normal_z", has_normal_z, normal_z_val));
+              if (has_normal_z)
+              {
+                if (normal_z_val < min_normal_z) min_normal_z = normal_z_val;
+                if (normal_z_val > max_normal_z) max_normal_z = normal_z_val;
+              }
+            }
+            PCL_DEBUG ("min/max normal_z [%f, %f]\n", min_normal_z, max_normal_z);
+
+            cond->addComparison (typename pcl::FieldComparison<PointT>::ConstPtr (new pcl::FieldComparison<PointT> ("normal_z", pcl::ComparisonOps::GT, m1)));
+            cond->addComparison (typename pcl::FieldComparison<PointT>::ConstPtr (new pcl::FieldComparison<PointT> ("normal_z", pcl::ComparisonOps::LT, m2)));
+          }
+          else
+          {
+            PCL_WARN ("Requested point type does not support ConditionalRemoval by normals...\n");
+          }
+
+          pcl::ConditionalRemoval<PointT> condrem (cond);
+          condrem.setInputCloud (cloud);
+          condrem.filter (*cloud_f);
         }
         else
         {
-          PCL_WARN ("Requested point type does not support ConditionalRemoval by normals...\n");
+          PCL_WARN ("Requested filter `%s` not implemented! Skipping...\n", name.c_str ());
         }
 
-        pcl::ConditionalRemoval<PointT> condrem (cond);
-        condrem.setInputCloud (cloud);
-        condrem.filter (*cloud_f);
-      }
-      else
-      {
-        PCL_WARN ("Requested filter `%s` not implemented! Skipping...\n", name.c_str ());
+        cloud.swap (cloud_f);
+
+        if (cloud->points.size () == 0)
+        {
+          PCL_WARN ("No points in filtered cloud. Skipping remaining filters...\n");
+          break;
+        }
       }
 
-      cloud.swap (cloud_f);
+      // after processing each tile, we need to merge them back together into output
+      // should just be a matter of using concatenatePoints, and the output.swap below
+      // goes away
+#pragma omp critical
+      output += *cloud;
 
-      if (cloud->points.size () == 0)
-      {
-        PCL_WARN ("No points in filtered cloud. Skipping remaining filters...\n");
-        break;
-      }
+      PCL_DEBUG ("tile %d filtered to %d points, adding to output, which now has %d points\n", tile, cloud->points.size(), output.points.size());
     }
 
     PCL_DEBUG ("\n");
@@ -328,7 +496,7 @@ pcl::Pipeline<PointT>::applyFilter (PointCloud &output)
   }
 
   // Resize the output arrays
-  output.swap (*cloud);
+//  output.swap (*cloud);
   output.width = static_cast<uint32_t> (output.points.size ());
 }
 

@@ -124,6 +124,15 @@ namespace pcl
       using Filter<PointT>::filter_name_;
       using Filter<PointT>::getClassName;
 
+      /** \brief The size of a leaf. */
+      Eigen::Vector4f leaf_size_;
+
+      /** \brief Internal leaf sizes stored as 1/leaf_size_ for efficiency reasons. */ 
+      Eigen::Array4f inverse_leaf_size_;
+
+      /** \brief The minimum and maximum bin coordinates, the number of divisions, and the division multiplier. */
+      Eigen::Vector4i min_b_, max_b_, div_b_, divb_mul_;
+
       /** \brief Filtered results are stored in a separate point cloud.
         * \param[out] output The resultant point cloud.
         */
