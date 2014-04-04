@@ -77,7 +77,7 @@ namespace pipeline
 }
 
 template <typename PointT> void
-pcl::Pipeline<PointT>::generateTileIndices (PointCloud &output, const float& resolution, std::vector<PointIndices> &tile_indices)
+pcl::Pipeline<PointT>::generateTileIndices (PointCloudConstPtr cloud, const float& resolution, std::vector<PointIndices> &tile_indices)
 {
   Eigen::Vector4f leaf_size;
   Eigen::Array4f inverse_leaf_size;
@@ -94,7 +94,7 @@ pcl::Pipeline<PointT>::generateTileIndices (PointCloud &output, const float& res
 
   Eigen::Vector4f min_p, max_p;
   // Get the minimum and maximum dimensions
-  pcl::getMinMax3D<PointT> (*input_, *indices_, min_p, max_p);
+  pcl::getMinMax3D<PointT> (*cloud, *indices_, min_p, max_p);
 
   // Check that the leaf size is not too small, given the size of the data
   int64_t dx = static_cast<int64_t>((max_p[0] - min_p[0]) * inverse_leaf_size[0])+1;
@@ -218,7 +218,7 @@ pcl::Pipeline<PointT>::applyFilter (PointCloud &output)
 
     // generate tile indices, can use vector of PointIndices (itself a vector of indices belonging to each tile)
     std::vector<PointIndices> tile_indices;
-    generateTileIndices (*input_, 100.0f, tile_indices);
+    generateTileIndices (input_, 100.0f, tile_indices);
    
     // loop over each tile (each PointIndices)
 #pragma omp parallel for shared(output) num_threads(4)

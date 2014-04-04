@@ -130,6 +130,9 @@ namespace pcl
       void
       applyFilter (PointCloud &output);
 
+      void
+      generateTileIndices (PointCloudConstPtr cloud, const float &resolution, std::vector<PointIndices> &tile_indices);
+
     private:
       bool filename_set_;
 
