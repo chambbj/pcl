@@ -50,7 +50,6 @@
 
 #include <pcl/for_each_type.h>
 #include <pcl/point_traits.h>
-
 #include <pcl/common/common.h>
 #include <pcl/features/normal_3d.h>
 #include <pcl/filters/conditional_removal.h>
@@ -77,6 +76,121 @@ namespace pipeline
   };
 }
 
+template <typename PointT> void
+pcl::Pipeline<PointT>::generateTileIndices (PointCloud &output, const float& resolution, std::vector<PointIndices> &tile_indices)
+{
+  Eigen::Vector4f leaf_size;
+  Eigen::Array4f inverse_leaf_size;
+  Eigen::Vector4i min_b, max_b, div_b, divb_mul;
+
+  leaf_size[0] = resolution;
+  leaf_size[1] = resolution;
+  leaf_size[2] = resolution;
+  leaf_size[3] = resolution;
+
+  inverse_leaf_size = Eigen::Array4f::Ones () / leaf_size.array ();
+
+  PCL_DEBUG ("experimental, tiling with leaf size %f\n", resolution);
+
+  Eigen::Vector4f min_p, max_p;
+  // Get the minimum and maximum dimensions
+  pcl::getMinMax3D<PointT> (*input_, *indices_, min_p, max_p);
+
+  // Check that the leaf size is not too small, given the size of the data
+  int64_t dx = static_cast<int64_t>((max_p[0] - min_p[0]) * inverse_leaf_size[0])+1;
+  int64_t dy = static_cast<int64_t>((max_p[1] - min_p[1]) * inverse_leaf_size[1])+1;
+
+  if ((dx*dy) > static_cast<int64_t>(std::numeric_limits<int32_t>::max()))
+  {
+    PCL_WARN("[pcl::%s::applyFilter] Leaf size is too small for the input dataset. Integer indices would overflow.", getClassName().c_str());
+    // is this really relevant anymore? don't think so, but maybe something like it
+    //output = *input_;
+    return;
+  }
+
+  // Compute the minimum and maximum bounding box values
+  min_b[0] = static_cast<int> (floor (min_p[0] * inverse_leaf_size[0]));
+  max_b[0] = static_cast<int> (floor (max_p[0] * inverse_leaf_size[0]));
+  min_b[1] = static_cast<int> (floor (min_p[1] * inverse_leaf_size[1]));
+  max_b[1] = static_cast<int> (floor (max_p[1] * inverse_leaf_size[1]));
+
+  // Compute the number of divisions needed along all axis
+  div_b = max_b - min_b + Eigen::Vector4i::Ones ();
+  div_b[3] = 0;
+
+  PCL_DEBUG ("%d and %d divisions in x and y\n", div_b[0], div_b[1]);
+
+  // Set up the division multiplier
+  divb_mul = Eigen::Vector4i (1, div_b[0], div_b[0] * div_b[1], 0);
+
+  std::vector<pipeline::tile_point_idx> index_vector;
+  index_vector.reserve (indices_->size ());
+
+  // First pass: go over all points and insert them into the index_vector vector
+  // with calculated idx. Points with the same idx value will contribute to the
+  // same point of resulting CloudPoint
+  for (std::vector<int>::const_iterator it = indices_->begin (); it != indices_->end (); ++it)
+  {
+    if (!input_->is_dense)
+      // Check if the point is invalid
+      if (!pcl_isfinite (input_->points[*it].x) || 
+          !pcl_isfinite (input_->points[*it].y) || 
+          !pcl_isfinite (input_->points[*it].z))
+        continue;
+
+    int ijk0 = static_cast<int> (floor (input_->points[*it].x * inverse_leaf_size[0]) - static_cast<float> (min_b[0]));
+    int ijk1 = static_cast<int> (floor (input_->points[*it].y * inverse_leaf_size[1]) - static_cast<float> (min_b[1]));
+
+    // Compute the centroid leaf index
+    int idx = ijk0 * divb_mul[0] + ijk1 * divb_mul[1];
+    index_vector.push_back (pipeline::tile_point_idx (static_cast<unsigned int> (idx), *it));
+  }
+
+  // Second pass: sort the index_vector vector using value representing target cell as index
+  // in effect all points belonging to the same output cell will be next to each other
+  std::sort (index_vector.begin (), index_vector.end (), std::less<pipeline::tile_point_idx> ());
+
+  // Third pass: count output cells
+  // we need to skip all the same, adjacenent idx values
+  unsigned int index = 0;
+  // first_and_last_indices_vector[i] represents the index in index_vector of the first point in
+  // index_vector belonging to the voxel which corresponds to the i-th output point,
+  // and of the first point not belonging to.
+  std::vector<std::pair<unsigned int, unsigned int> > first_and_last_indices_vector;
+  // Worst case size
+  first_and_last_indices_vector.reserve (index_vector.size ());
+  while (index < index_vector.size ()) 
+  {
+    unsigned int i = index + 1;
+    while (i < index_vector.size () && index_vector[i].tile_idx == index_vector[index].tile_idx) 
+      ++i;
+    first_and_last_indices_vector.push_back (std::pair<unsigned int, unsigned int> (index, i));
+    index = i;
+  }
+
+  tile_indices.resize (first_and_last_indices_vector.size ());
+
+  for (unsigned int cp = 0; cp < first_and_last_indices_vector.size (); ++cp)
+  {
+    // calculate centroid - sum values from all input points, that have the same idx value in index_vector array
+    unsigned int first_index = first_and_last_indices_vector[cp].first;
+    unsigned int last_index = first_and_last_indices_vector[cp].second;
+
+    tile_indices[cp].indices.resize (last_index - first_index);
+
+    PCL_DEBUG ("tile %d will have %d points\n", cp, last_index - first_index);
+
+    index = 0;
+
+    for (unsigned int i = first_index + 1; i < last_index; ++i) 
+    {
+      tile_indices[cp].indices[index] = index_vector[i].point_idx;
+      ++index;
+    }
+  }
+
+  return;
+}
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 template <typename PointT> void
@@ -104,113 +218,8 @@ pcl::Pipeline<PointT>::applyFilter (PointCloud &output)
 
     // generate tile indices, can use vector of PointIndices (itself a vector of indices belonging to each tile)
     std::vector<PointIndices> tile_indices;
-
-    leaf_size_[0] = 100.0f;
-    leaf_size_[1] = 100.0f;
-    leaf_size_[2] = 100.0f;
-    leaf_size_[3] = 100.0f;
-
-    inverse_leaf_size_ = Eigen::Array4f::Ones () / leaf_size_.array ();
-
-    PCL_DEBUG ("experimental, tiling with leaf size 100\n");
-
-    Eigen::Vector4f min_p, max_p;
-    // Get the minimum and maximum dimensions
-    pcl::getMinMax3D<PointT> (*input_, *indices_, min_p, max_p);
-
-    // Check that the leaf size is not too small, given the size of the data
-    int64_t dx = static_cast<int64_t>((max_p[0] - min_p[0]) * inverse_leaf_size_[0])+1;
-    int64_t dy = static_cast<int64_t>((max_p[1] - min_p[1]) * inverse_leaf_size_[1])+1;
-
-    if ((dx*dy) > static_cast<int64_t>(std::numeric_limits<int32_t>::max()))
-    {
-        PCL_WARN("[pcl::%s::applyFilter] Leaf size is too small for the input dataset. Integer indices would overflow.", getClassName().c_str());
-        // is this really relevant anymore? don't think so, but maybe something like it
-        //output = *input_;
-        return;
-    }
-
-    // Compute the minimum and maximum bounding box values
-    min_b_[0] = static_cast<int> (floor (min_p[0] * inverse_leaf_size_[0]));
-    max_b_[0] = static_cast<int> (floor (max_p[0] * inverse_leaf_size_[0]));
-    min_b_[1] = static_cast<int> (floor (min_p[1] * inverse_leaf_size_[1]));
-    max_b_[1] = static_cast<int> (floor (max_p[1] * inverse_leaf_size_[1]));
-
-    // Compute the number of divisions needed along all axis
-    div_b_ = max_b_ - min_b_ + Eigen::Vector4i::Ones ();
-    div_b_[3] = 0;
-
-    PCL_DEBUG ("%d and %d divisions in x and y\n", div_b_[0], div_b_[1]);
-
-    // Set up the division multiplier
-    divb_mul_ = Eigen::Vector4i (1, div_b_[0], div_b_[0] * div_b_[1], 0);
-
-    std::vector<pipeline::tile_point_idx> index_vector;
-    index_vector.reserve (indices_->size ());
-
-    // First pass: go over all points and insert them into the index_vector vector
-    // with calculated idx. Points with the same idx value will contribute to the
-    // same point of resulting CloudPoint
-    for (std::vector<int>::const_iterator it = indices_->begin (); it != indices_->end (); ++it)
-    {
-      if (!input_->is_dense)
-        // Check if the point is invalid
-        if (!pcl_isfinite (input_->points[*it].x) || 
-            !pcl_isfinite (input_->points[*it].y) || 
-            !pcl_isfinite (input_->points[*it].z))
-          continue;
-
-      int ijk0 = static_cast<int> (floor (input_->points[*it].x * inverse_leaf_size_[0]) - static_cast<float> (min_b_[0]));
-      int ijk1 = static_cast<int> (floor (input_->points[*it].y * inverse_leaf_size_[1]) - static_cast<float> (min_b_[1]));
-
-      // Compute the centroid leaf index
-      int idx = ijk0 * divb_mul_[0] + ijk1 * divb_mul_[1];
-      index_vector.push_back (pipeline::tile_point_idx (static_cast<unsigned int> (idx), *it));
-    }
-
-    // Second pass: sort the index_vector vector using value representing target cell as index
-    // in effect all points belonging to the same output cell will be next to each other
-    std::sort (index_vector.begin (), index_vector.end (), std::less<pipeline::tile_point_idx> ());
-
-    // Third pass: count output cells
-    // we need to skip all the same, adjacenent idx values
-    unsigned int index = 0;
-    // first_and_last_indices_vector[i] represents the index in index_vector of the first point in
-    // index_vector belonging to the voxel which corresponds to the i-th output point,
-    // and of the first point not belonging to.
-    std::vector<std::pair<unsigned int, unsigned int> > first_and_last_indices_vector;
-    // Worst case size
-    first_and_last_indices_vector.reserve (index_vector.size ());
-    while (index < index_vector.size ()) 
-    {
-        unsigned int i = index + 1;
-        while (i < index_vector.size () && index_vector[i].tile_idx == index_vector[index].tile_idx) 
-            ++i;
-        first_and_last_indices_vector.push_back (std::pair<unsigned int, unsigned int> (index, i));
-        index = i;
-    }
-
-    tile_indices.resize (first_and_last_indices_vector.size ());
-
-    for (unsigned int cp = 0; cp < first_and_last_indices_vector.size (); ++cp)
-    {
-        // calculate centroid - sum values from all input points, that have the same idx value in index_vector array
-        unsigned int first_index = first_and_last_indices_vector[cp].first;
-        unsigned int last_index = first_and_last_indices_vector[cp].second;
-
-        tile_indices[cp].indices.resize (last_index - first_index);
-
-        PCL_DEBUG ("tile %d will have %d points\n", cp, last_index - first_index);
-
-        index = 0;
-
-        for (unsigned int i = first_index + 1; i < last_index; ++i) 
-        {
-            tile_indices[cp].indices[index] = index_vector[i].point_idx;
-            ++index;
-        }
-    }
-    
+    generateTileIndices (*input_, 100.0f, tile_indices);
+   
     // loop over each tile (each PointIndices)
 #pragma omp parallel for shared(output) num_threads(4)
     for (unsigned int tile = 0; tile < tile_indices.size(); ++tile)
@@ -381,11 +390,8 @@ pcl::Pipeline<PointT>::applyFilter (PointCloud &output)
           pmf.setBase(b);
           pmf.setExponential(e);
 
-          std::vector<int> ground;
-          pmf.extract (ground);
-
           PointIndicesPtr idx ( new PointIndices );
-          idx->indices = ground;
+          pmf.extract (idx->indices);
 
           pcl::ExtractIndices<PointT> extract;
           extract.setInputCloud (cloud);
