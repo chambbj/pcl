@@ -84,6 +84,7 @@ namespace pcl
       {
         filter_name_ = "Pipeline";
         filename_set_ = false;
+        json_set_ = false;
       }
 
       /** \brief Provide the name of the JSON file describing the PCL pipeline.
@@ -94,6 +95,7 @@ namespace pcl
       {
         filename_set_ = true;
         boost::property_tree::read_json (filename.c_str (), pt_);
+        json_set_ = true;
       }
 
       inline void
@@ -103,6 +105,7 @@ namespace pcl
           PCL_WARN ("Filename and JSON string have both been specified. Using only the string!\n");
         std::stringstream ss(json);
         boost::property_tree::read_json (ss, pt_);
+        json_set_ = true;
       }
 
       /** \brief Set the offsets to the data in the x, y, and z dimension.
@@ -134,7 +137,7 @@ namespace pcl
       generateTileIndices (PointCloudConstPtr cloud, const float &resolution, std::vector<PointIndices> &tile_indices);
 
     private:
-      bool filename_set_;
+      bool filename_set_, json_set_;
 
       boost::property_tree::ptree pt_;
 

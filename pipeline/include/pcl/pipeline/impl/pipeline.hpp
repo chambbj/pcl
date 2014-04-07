@@ -205,6 +205,14 @@ pcl::Pipeline<PointT>::applyFilter (PointCloud &output)
     return;
   }
 
+  // Do we have a JSON string to process?
+  if (!json_set_)
+  {
+    PCL_WARN ("[pcl::%s::applyFilter] No input JSON given!\n", getClassName ().c_str ());
+    output = *input_;
+    return;
+  }
+
   output.is_dense = true;
 
   try
@@ -218,7 +226,12 @@ pcl::Pipeline<PointT>::applyFilter (PointCloud &output)
 
     // generate tile indices, can use vector of PointIndices (itself a vector of indices belonging to each tile)
     std::vector<PointIndices> tile_indices;
-    generateTileIndices (input_, 100.0f, tile_indices);
+    PointIndices foo; // okay, this is totally ugly. i just want to make sure we have a single tile of all indices if no tile_size is specified.
+    foo.indices = *indices_;
+    tile_indices.push_back (foo);
+    float ts = pt_.get<float> ("pipeline.tile_size", 0.0f);
+    if (ts > 0.0f)
+      generateTileIndices (input_, ts, tile_indices);
    
     // loop over each tile (each PointIndices)
 #pragma omp parallel for shared(output) num_threads(4)
@@ -343,19 +356,17 @@ pcl::Pipeline<PointT>::applyFilter (PointCloud &output)
         }
         else if (name == "GridMinimum")
         {
-          // initial setup
-          pcl::GridMinimum<PointT> vgm;
-          vgm.setInputCloud (cloud);
-
           // parse params
-          float x = vt.second.get<float> ("setLeafSize.x", 1.0);
-          float y = vt.second.get<float> ("setLeafSize.y", 1.0);
+          float r = vt.second.get<float> ("setResolution", 1.0);
 
           // summarize settings
-          PCL_DEBUG ("      leaf size: %f, %f\n", x, y);
+          PCL_DEBUG ("      resolution: %f\n", r);
 
-          // set params and apply filter
-          vgm.setLeafSize (x, y);
+          // initial setup
+          pcl::GridMinimum<PointT> vgm (r);
+          vgm.setInputCloud (cloud);
+
+          // apply filter
           vgm.filter (*cloud_f);
         }
         else if (name == "ProgressiveMorphologicalFilter")
