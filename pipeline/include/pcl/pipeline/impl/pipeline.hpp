@@ -383,6 +383,7 @@ pcl::Pipeline<PointT>::applyFilter (PointCloud &output)
           float c = vt.second.get<float> ("setCellSize", 1.0);
           float b = vt.second.get<float> ("setBase", 2.0);
           bool e = vt.second.get<bool> ("setExponential", true);
+          bool n = vt.second.get<bool> ("setNegative", false);
 
           // summarize settings
           PCL_DEBUG ("      max window size: %d\n", w);
@@ -407,7 +408,7 @@ pcl::Pipeline<PointT>::applyFilter (PointCloud &output)
           pcl::ExtractIndices<PointT> extract;
           extract.setInputCloud (cloud);
           extract.setIndices (idx);
-          extract.setNegative (false);
+          extract.setNegative (n);
           extract.filter (*cloud_f);
 
           PCL_DEBUG ("      %d points filtered to %d following progressive morphological filter\n", cloud->points.size (), cloud_f->points.size ());
