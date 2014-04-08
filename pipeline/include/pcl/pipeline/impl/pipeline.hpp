@@ -371,9 +371,9 @@ pcl::Pipeline<PointT>::applyFilter (PointCloud &output)
         }
         else if (name == "ProgressiveMorphologicalFilter")
         {
-          PCL_DEBUG ( "pmf\n" );
           pcl::ProgressiveMorphologicalFilter<PointT> pmf;
-          pmf.setInputCloud (cloud);
+          pcl::RadiusOutlierRemoval<PointT> ror;
+          pcl::StatisticalOutlierRemoval<PointT> sor;
 
           // parse params
           int w = vt.second.get<int> ("setMaxWindowSize", 33);
@@ -384,6 +384,8 @@ pcl::Pipeline<PointT>::applyFilter (PointCloud &output)
           float b = vt.second.get<float> ("setBase", 2.0);
           bool e = vt.second.get<bool> ("setExponential", true);
           bool n = vt.second.get<bool> ("setNegative", false);
+          bool pre_ror = vt.second.get<bool> ("preFilterRadius", false);
+          bool pre_sor = vt.second.get<bool> ("preFilterStatistical", false);
 
           // summarize settings
           PCL_DEBUG ("      max window size: %d\n", w);
@@ -393,7 +395,27 @@ pcl::Pipeline<PointT>::applyFilter (PointCloud &output)
           PCL_DEBUG ("      cell size: %f\n", c);
           PCL_DEBUG ("      base: %f\n", b);
           PCL_DEBUG ("      exponential: %s\n", e?"true":"false");
+          PCL_DEBUG ("      negative: %s\n", n?"true":"false");
 
+          if (pre_ror)
+          {
+            ror.setInputCloud (cloud);
+            ror.setRadiusSearch (3.5f);
+            ror.setMinNeighborsInRadius (1);
+            ror.filter (*cloud_f);
+            cloud.swap (cloud_f);
+          }
+
+          if (pre_sor)
+          {
+            sor.setInputCloud (cloud);
+            sor.setMeanK (8);
+            sor.setStddevMulThresh (1.0f);
+            sor.filter (*cloud_f);
+            cloud.swap (cloud_f);
+          }
+
+          pmf.setInputCloud (cloud);
           pmf.setMaxWindowSize(w);
           pmf.setSlope(s);
           pmf.setMaxDistance(md);
