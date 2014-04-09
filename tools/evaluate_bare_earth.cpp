@@ -91,9 +91,10 @@ compute (Cloud &original, Cloud &reference, Cloud &filtered, float tol)
   tree_original.setInputCloud (original.makeShared ());
   tree_reference.setInputCloud (reference.makeShared ());
 
-  int a0, a, b, c, d, e, j;
-  a0 = a = b = c = d = j = 0;
+  int a0, a, b, c, d, e, j, nt;
+  a0 = a = b = c = d = j = nt = 0;
   e = original.points.size ();
+  nt = reference.points.size ();
 
   //float tol = 0.1;
   float sqr_tol = std::pow (tol, 2);
@@ -116,7 +117,7 @@ compute (Cloud &original, Cloud &reference, Cloud &filtered, float tol)
 
     if (orig_sqr_distances[0] < sqr_tol) // && orig_sqr_distances[0] < ref_sqr_distances[0])
       a0++;
-    else if (ref_sqr_distances[0] < sqr_tol) // && ref_sqr_distances[0] < orig_sqr_distances[0])
+    if (ref_sqr_distances[0] < sqr_tol) // && ref_sqr_distances[0] < orig_sqr_distances[0])
       a++;
     /*
     else
@@ -166,9 +167,9 @@ compute (Cloud &original, Cloud &reference, Cloud &filtered, float tol)
   }
   */
 
-  b = e - a;
+  b = nt - a;
   c = a0 - a;
-  d = e - c;
+  d = e - (a + b + c);
 
   //int e = a + b + c + d;
   float f = static_cast<float> (a+b) / static_cast<float> (e);
@@ -178,6 +179,8 @@ compute (Cloud &original, Cloud &reference, Cloud &filtered, float tol)
   float k = static_cast<float> (b) / static_cast<float> (c);
   float pd = static_cast<float> (a+d) / static_cast<float> (e);
   float pfa = static_cast<float> (b+c) / static_cast<float> (e);
+  float pre = f * h + g * i;
+  float kappa = (pd - pre) / (1.0f - pre);
 
   print_info ("[done, "); print_value ("%g", tt.toc ()); print_info (" ms : ");
   print_info ("a: "); print_value ("%d", a);
@@ -194,6 +197,8 @@ compute (Cloud &original, Cloud &reference, Cloud &filtered, float tol)
   print_info (" ]\n");
   print_info ("[Pd: "); print_value ("%0.2f%%", pd*100.0f);
   print_info (", Pfa: "); print_value ("%0.2f%%", pfa*100.0f);
+  print_info (", Pre: "); print_value ("%0.2f%%", pre*100.0f);
+  print_info (", K: "); print_value ("%0.2f%%", kappa*100.0f);
   print_info (" ]\n");
 }
 
@@ -203,7 +208,7 @@ main (int argc, char** argv)
 {
   print_info ("Evaluate bare earth performance. For more information, use: %s -h\n", argv[0]);
 
-  if (argc < 6)
+  if (argc < 5)
   {
     printHelp (argc, argv);
     return (-1);
@@ -212,9 +217,9 @@ main (int argc, char** argv)
   // Parse the command line arguments for .pcd files
   std::vector<int> p_file_indices;
   p_file_indices = parse_file_extension_argument (argc, argv, ".pcd");
-  if (p_file_indices.size () != 4)
+  if (p_file_indices.size () != 3)
   {
-    print_error ("Need two reference PCD files (bare earth and object) and two filtered PCD files (bare earth and object) to evaluate bare earth.\n");
+    print_error ("Need the original PCD, reference ground PCD, and filtered ground PCD to evaluate bare earth.\n");
     return (-1);
   }
 
@@ -233,12 +238,14 @@ main (int argc, char** argv)
   if (!loadCloud (argv[p_file_indices[2]], *filtered))
     return (-1);
 
+  /*
   // Load the fourth file
   Cloud::Ptr cloud_d (new Cloud);
   if (!loadCloud (argv[p_file_indices[3]], *cloud_d))
     return (-1);
+  */
 
   // Compute the Hausdorff distance
-  compute (*original, *reference, *filtered, std::atof (argv[5]));
+  compute (*original, *reference, *filtered, std::atof (argv[4]));
 }
 
