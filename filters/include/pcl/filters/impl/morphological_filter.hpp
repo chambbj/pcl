@@ -50,6 +50,9 @@
 #include <pcl/common/common.h>
 #include <pcl/common/io.h>
 #include <pcl/filters/morphological_filter.h>
+#include <pcl/filters/project_inliers.h>
+#include <pcl/ModelCoefficients.h>
+//#include <pcl/search/kdtree.h>
 #include <pcl/octree/octree.h>
 
 ///////////////////////////////////////////////////////////////////////////////////////////
@@ -63,8 +66,27 @@ pcl::applyMorphologicalOperator (const typename pcl::PointCloud<PointT>::ConstPt
 
   pcl::copyPointCloud<PointT, PointT> (*cloud_in, cloud_out);
 
-  pcl::octree::OctreePointCloudSearch<PointT> tree (resolution);
+  //// Create a set of planar coefficients with X=Y=0,Z=1
+  //pcl::ModelCoefficients::Ptr coefficients (new pcl::ModelCoefficients ());
+  //coefficients->values.resize (4);
+  //coefficients->values[0] = coefficients->values[1] = 0;
+  //coefficients->values[2] = 1.0;
+  //coefficients->values[3] = 0;
 
+  //// Create the filtering object and project input into xy plane
+  //pcl::ProjectInliers<PointT> proj;
+  //proj.setModelType (pcl::SACMODEL_PLANE);
+  //proj.setInputCloud (cloud_in);
+  //proj.setModelCoefficients (coefficients);
+
+  //pcl::PointCloud<PointT>::Ptr cloud_projected (new pcl::PointCloud<PointT>);
+  //proj.filter (*cloud_projected);
+
+  //// Spatially indexed point cloud
+  //pcl::search::KdTree<PointT>::Ptr tree (new pcl::search::KdTree<PointT>);
+  //tree->setInputCloud (cloud_projected);
+
+  pcl::octree::OctreePointCloudSearch<PointT> tree (resolution);
   tree.setInputCloud (cloud_in);
   tree.addPointsFromInputCloud ();
 
@@ -77,17 +99,21 @@ pcl::applyMorphologicalOperator (const typename pcl::PointCloud<PointT>::ConstPt
     {
       for (size_t p_idx = 0; p_idx < cloud_in->points.size (); ++p_idx)
       {
+        PointT query_pt = cloud_in->points[p_idx];
         Eigen::Vector3f bbox_min, bbox_max;
         std::vector<int> pt_indices;
-        float minx = cloud_in->points[p_idx].x - half_res;
-        float miny = cloud_in->points[p_idx].y - half_res;
-        float minz = -std::numeric_limits<float>::max ();
-        float maxx = cloud_in->points[p_idx].x + half_res;
-        float maxy = cloud_in->points[p_idx].y + half_res;
-        float maxz = std::numeric_limits<float>::max ();
-        bbox_min = Eigen::Vector3f (minx, miny, minz);
-        bbox_max = Eigen::Vector3f (maxx, maxy, maxz);
+        //float minx = query_pt.x - half_res;
+        //float miny = query_pt.y - half_res;
+        //float minz = -std::numeric_limits<float>::max ();
+        //float maxx = query_pt.x + half_res;
+        //float maxy = query_pt.y + half_res;
+        //float maxz = std::numeric_limits<float>::max ();
+        bbox_min = Eigen::Vector3f (query_pt.x - half_res, query_pt.y - half_res, -std::numeric_limits<float>::max ());
+        bbox_max = Eigen::Vector3f (query_pt.x + half_res, query_pt.y + half_res, std::numeric_limits<float>::max ());
         tree.boxSearch (bbox_min, bbox_max, pt_indices);
+        //std::vector<float> distances;
+        //query_pt.z = 0.0f;
+        //tree->radiusSearch (query_pt, half_res, pt_indices, distances);
 
         if (pt_indices.size () > 0)
         {
@@ -120,17 +146,21 @@ pcl::applyMorphologicalOperator (const typename pcl::PointCloud<PointT>::ConstPt
 
       for (size_t p_idx = 0; p_idx < cloud_temp.points.size (); ++p_idx)
       {
+        PointT query_pt = cloud_in->points[p_idx];
         Eigen::Vector3f bbox_min, bbox_max;
         std::vector<int> pt_indices;
-        float minx = cloud_temp.points[p_idx].x - half_res;
-        float miny = cloud_temp.points[p_idx].y - half_res;
-        float minz = -std::numeric_limits<float>::max ();
-        float maxx = cloud_temp.points[p_idx].x + half_res;
-        float maxy = cloud_temp.points[p_idx].y + half_res;
-        float maxz = std::numeric_limits<float>::max ();
-        bbox_min = Eigen::Vector3f (minx, miny, minz);
-        bbox_max = Eigen::Vector3f (maxx, maxy, maxz);
+        //float minx = query_pt.x - half_res;
+        //float miny = query_pt.y - half_res;
+        //float minz = -std::numeric_limits<float>::max ();
+        //float maxx = query_pt.x + half_res;
+        //float maxy = query_pt.y + half_res;
+        //float maxz = std::numeric_limits<float>::max ();
+        bbox_min = Eigen::Vector3f (query_pt.x - half_res, query_pt.y - half_res, -std::numeric_limits<float>::max ());
+        bbox_max = Eigen::Vector3f (query_pt.x + half_res, query_pt.y + half_res, std::numeric_limits<float>::max ());
         tree.boxSearch (bbox_min, bbox_max, pt_indices);
+        //std::vector<float> distances;
+        //query_pt.z = 0.0f;
+        //tree->radiusSearch (query_pt, half_res, pt_indices, distances);
 
         if (pt_indices.size () > 0)
         {
@@ -157,17 +187,21 @@ pcl::applyMorphologicalOperator (const typename pcl::PointCloud<PointT>::ConstPt
 
       for (size_t p_idx = 0; p_idx < cloud_temp.points.size (); ++p_idx)
       {
+        PointT query_pt = cloud_in->points[p_idx];
         Eigen::Vector3f bbox_min, bbox_max;
         std::vector<int> pt_indices;
-        float minx = cloud_temp.points[p_idx].x - half_res;
-        float miny = cloud_temp.points[p_idx].y - half_res;
-        float minz = -std::numeric_limits<float>::max ();
-        float maxx = cloud_temp.points[p_idx].x + half_res;
-        float maxy = cloud_temp.points[p_idx].y + half_res;
-        float maxz = std::numeric_limits<float>::max ();
-        bbox_min = Eigen::Vector3f (minx, miny, minz);
-        bbox_max = Eigen::Vector3f (maxx, maxy, maxz);
+        //float minx = query_pt.x - half_res;
+        //float miny = query_pt.y - half_res;
+        //float minz = -std::numeric_limits<float>::max ();
+        //float maxx = query_pt.x + half_res;
+        //float maxy = query_pt.y + half_res;
+        //float maxz = std::numeric_limits<float>::max ();
+        bbox_min = Eigen::Vector3f (query_pt.x - half_res, query_pt.y - half_res, -std::numeric_limits<float>::max ());
+        bbox_max = Eigen::Vector3f (query_pt.x + half_res, query_pt.y + half_res, std::numeric_limits<float>::max ());
         tree.boxSearch (bbox_min, bbox_max, pt_indices);
+        //std::vector<float> distances;
+        //query_pt.z = 0.0f;
+        //tree->radiusSearch (query_pt, half_res, pt_indices, distances);
 
         if (pt_indices.size () > 0)
         {
