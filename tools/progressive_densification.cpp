@@ -184,19 +184,14 @@ compute (ConstCloudPtr &input, Cloud &output, int max_window_size, float slope, 
   tt.tic ();
 
   print_highlight (stderr, "Computing ");
-  std::cerr << std::endl;
 
-  std::cerr << input->points.size () << std::endl;
-//  std::vector<int> ground;
-
+  // start by finding grid minimums (user variable res, larger than buildings)
   CloudPtr cloud_out (new Cloud);
   GridMinimum<PointXYZ> gm (10.0f);
   gm.setInputCloud (input);
   gm.filter (*cloud_out);
 
   saveCloud ("gm.pcd", *cloud_out);
-
-  std::cerr << cloud_out->points.size () << std::endl;
 
   // Normal estimation*
   NormalEstimation<PointXYZ, Normal> n;
@@ -242,109 +237,143 @@ compute (ConstCloudPtr &input, Cloud &output, int max_window_size, float slope, 
   CloudPtr tri_cloud (new Cloud);
   fromPCLPointCloud2 (triangles.cloud, *tri_cloud);
 
-  std::cerr << triangles.polygons.size () << std::endl;
-  std::cerr << triangles.polygons[0].vertices.size () << std::endl;
-  std::cerr << tri_cloud->points.size () << std::endl;
-  std::cerr << std::setprecision (2) << std::fixed;
-
-// getting vertices of first triangle
-  PointXYZ a = tri_cloud->points[triangles.polygons[0].vertices[0]];
-  PointXYZ b = tri_cloud->points[triangles.polygons[0].vertices[1]];
-  PointXYZ c = tri_cloud->points[triangles.polygons[0].vertices[2]];
-
-// getting the same vertices as a cloud for computing centroid
-  PointIndicesPtr idx (new PointIndices);
-  idx->indices.push_back (triangles.polygons[0].vertices[0]);
-  idx->indices.push_back (triangles.polygons[0].vertices[1]);
-  idx->indices.push_back (triangles.polygons[0].vertices[2]);
-  ExtractIndices<PointXYZ> extract;
-  extract.setInputCloud (tri_cloud);
-  extract.setIndices (idx);
-  CloudPtr tri (new Cloud);
-  extract.filter (*tri);
-
-  std::cerr << tri->points.size () << std::endl;
-
-// cropping input cloud to only those points within the first triangle
-  CropHull<PointXYZ> ch;
-  ch.setInputCloud (input);
-  ch.setHullCloud (tri_cloud);
-  ch.setDim (2);
-  std::vector<Vertices> first_triangle;
-  first_triangle.push_back (triangles.polygons[0]);
-  ch.setHullIndices (first_triangle);
-  std::vector<int> hidx;
-  ch.filter (hidx);
-  std::cerr << hidx.size () << " in hull" << std::endl;
-
-// find centroid of vertices
-  Eigen::Vector4f centroid;
-  compute3DCentroid (*tri, centroid);
-
-  std::cerr << centroid << std::endl;
-
-// get plane defined by vertices
-  Eigen::Hyperplane<float, 3> eigen_plane =
-    Eigen::Hyperplane<float, 3>::Through (a.getArray3fMap (),
-                                          b.getArray3fMap (),
-                                          c.getArray3fMap ());
-
-// compute distance between centroid and plane
-  PointXYZ d;
-  d.x = centroid[0];
-  d.y = centroid[1];
-  d.z = centroid[2];
-  float dist = eigen_plane.absDistance (d.getArray3fMap ()); // signedDistance also available, won't points always be above the plane anyway?
-
-  std::cerr << dist << std::endl;
-
-// find nearest point in cloud to centroid
-  search::KdTree<PointXYZ>::Ptr tree3 (new search::KdTree<PointXYZ>);
-  tree3->setInputCloud (input);
-  std::vector<int> indices (1);
-  std::vector<float> distances (1);
-  tree3->nearestKSearch (d, 1, indices, distances);
-  std::cerr << input->points[indices[0]] << std::endl;
-
-  // compute distance
-  std:: cerr << eigen_plane.absDistance (input->points[indices[0]].getArray3fMap ()) << std::endl;
-
-  // find angles between point and vertices
-  float angle1, angle2, angle3;
-  getAnglesToVertices (input->points[indices[0]], a, b, c, angle1, angle2, angle3);
-
-  std::cerr << angle1*180/M_PI << ", " << angle2*180/M_PI << ", " << angle3*180/M_PI << std::endl;
-
   PointIndicesPtr addtoground (new PointIndices);
 
-  for (int i = 0; i < hidx.size (); ++i)
+  for (int t = 0; t < triangles.polygons.size(); ++t)
   {
-    getAnglesToVertices (input->points[hidx[i]], a, b, c, angle1, angle2, angle3);
-    dist = eigen_plane.absDistance (input->points[hidx[i]].getArray3fMap ());
-    if (dist < 1.5 && angle1 < 6*M_PI/180 && angle2 < 6*M_PI/180 && angle3 < 6*M_PI/180)
+    // cropping input cloud to only those points within the first triangle
+    CropHull<PointXYZ> ch;
+    ch.setInputCloud (input);
+    ch.setHullCloud (tri_cloud);
+    ch.setDim (2);
+    std::vector<Vertices> first_triangle;
+    first_triangle.push_back (triangles.polygons[t]);
+    ch.setHullIndices (first_triangle);
+    std::vector<int> hidx;
+    ch.filter (hidx);
+    std::cerr << hidx.size () << " in triangle " << t << std::endl;
+
+    // getting vertices of first triangle
+    PointXYZ a = tri_cloud->points[triangles.polygons[t].vertices[0]];
+    PointXYZ b = tri_cloud->points[triangles.polygons[t].vertices[1]];
+    PointXYZ c = tri_cloud->points[triangles.polygons[t].vertices[2]];
+
+    // get plane defined by vertices
+    Eigen::Hyperplane<float, 3> eigen_plane =
+      Eigen::Hyperplane<float, 3>::Through (a.getArray3fMap (),
+                                            b.getArray3fMap (),
+                                            c.getArray3fMap ());
+
+    for (int i = 0; i < hidx.size (); ++i)
     {
+      float angle1, angle2, angle3, dist;
+      getAnglesToVertices (input->points[hidx[i]], a, b, c, angle1, angle2, angle3);
+      dist = eigen_plane.absDistance (input->points[hidx[i]].getArray3fMap ());
       std::cerr << dist << ", " << angle1*180/M_PI << ", " << angle2*180/M_PI << ", " << angle3*180/M_PI << std::endl;
-      std::cerr << input->points[hidx[i]] << std::endl;
-      addtoground->indices.push_back (hidx[i]);
+      if (dist < 1.5 && angle1 < 6*M_PI/180 && angle2 < 6*M_PI/180 && angle3 < 6*M_PI/180)
+      {
+        std::cerr << input->points[hidx[i]] << std::endl;
+        addtoground->indices.push_back (hidx[i]);
+      }
     }
   }
 
   std::cerr << addtoground->indices.size () << std::endl;
 
+  ExtractIndices<PointXYZ> extract;
   CloudPtr ground (new Cloud);
   extract.setInputCloud (input);
   extract.setIndices (addtoground);
   extract.filter (*ground);
+  *ground += *cloud_out;
   saveCloud ("densify.pcd", *ground);
 
-//  PointIndicesPtr idx (new PointIndices);
-//  idx->indices = ground;
+// iteration 2
 
-//  ExtractIndices<PointType> extract;
-//  extract.setInputCloud (input);
-//  extract.setIndices (idx);
-//  extract.setNegative (false);
-//  extract.filter (output);
+  // Normal estimation*
+  tree->setInputCloud (ground);
+  n.setInputCloud (ground);
+  n.setSearchMethod (tree);
+  n.setKSearch (20);
+  n.compute (*normals);
+  //* normals should not contain the point normals + surface curvatures
+
+  // Concatenate the XYZ and normal fields*
+  concatenateFields (*ground, *normals, *cloud_with_normals);
+  //* cloud_with_normals = cloud + normals
+
+  // Create search tree*
+  tree2->setInputCloud (cloud_with_normals);
+
+  // Set the maximum distance between connected points (maximum edge length)
+  gp3.setSearchRadius (100.0);
+
+  // Set typical values for the parameters
+  gp3.setMu (2.5);
+  gp3.setMaximumNearestNeighbors (100);
+  gp3.setMaximumSurfaceAngle (M_PI/4); // 45 degrees
+  gp3.setMinimumAngle (M_PI/18); // 10 degrees
+  gp3.setMaximumAngle (2*M_PI/3); // 120 degrees
+  gp3.setNormalConsistency (false);
+
+  // Get result
+  gp3.setInputCloud (cloud_with_normals);
+  gp3.setSearchMethod (tree2);
+  gp3.reconstruct (triangles);
+
+  // get the polygonmesh cloud
+  fromPCLPointCloud2 (triangles.cloud, *tri_cloud);
+
+  //PointIndicesPtr addtoground (new PointIndices);
+  addtoground->indices.clear();
+
+  for (int t = 0; t < triangles.polygons.size(); ++t)
+  {
+    // cropping input cloud to only those points within the first triangle
+    CropHull<PointXYZ> ch;
+    ch.setInputCloud (input);
+    ch.setHullCloud (tri_cloud);
+    ch.setDim (2);
+    std::vector<Vertices> first_triangle;
+    first_triangle.push_back (triangles.polygons[t]);
+    ch.setHullIndices (first_triangle);
+    std::vector<int> hidx;
+    ch.filter (hidx);
+    std::cerr << hidx.size () << " in triangle " << t << std::endl;
+
+    // getting vertices of first triangle
+    PointXYZ a = tri_cloud->points[triangles.polygons[t].vertices[0]];
+    PointXYZ b = tri_cloud->points[triangles.polygons[t].vertices[1]];
+    PointXYZ c = tri_cloud->points[triangles.polygons[t].vertices[2]];
+
+    // get plane defined by vertices
+    Eigen::Hyperplane<float, 3> eigen_plane =
+      Eigen::Hyperplane<float, 3>::Through (a.getArray3fMap (),
+                                            b.getArray3fMap (),
+                                            c.getArray3fMap ());
+
+    for (int i = 0; i < hidx.size (); ++i)
+    {
+      float angle1, angle2, angle3, dist;
+      getAnglesToVertices (input->points[hidx[i]], a, b, c, angle1, angle2, angle3);
+      dist = eigen_plane.absDistance (input->points[hidx[i]].getArray3fMap ());
+      std::cerr << dist << ", " << angle1*180/M_PI << ", " << angle2*180/M_PI << ", " << angle3*180/M_PI << std::endl;
+      if (dist < 1.5 && angle1 < 6*M_PI/180 && angle2 < 6*M_PI/180 && angle3 < 6*M_PI/180)
+      {
+        std::cerr << input->points[hidx[i]] << std::endl;
+        addtoground->indices.push_back (hidx[i]);
+      }
+    }
+  }
+
+  std::cerr << addtoground->indices.size () << std::endl;
+
+  extract.setInputCloud (input);
+  extract.setIndices (addtoground);
+  CloudPtr ground2 (new Cloud);
+  extract.filter (*ground2);
+  *ground2 += *ground;
+  saveCloud ("densify2.pcd", *ground2);
 
   print_info ("[done, ");
   print_value ("%g", tt.toc ());
