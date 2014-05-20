@@ -239,7 +239,7 @@ compute (ConstCloudPtr &input, Cloud &output, int max_window_size, float slope, 
 
   PointIndicesPtr addtoground (new PointIndices);
 
-  for (int t = 0; t < triangles.polygons.size(); ++t)
+  for (int t = 0; t < triangles.polygons.size (); ++t)
   {
     // cropping input cloud to only those points within the first triangle
     CropHull<PointXYZ> ch;
@@ -325,9 +325,9 @@ compute (ConstCloudPtr &input, Cloud &output, int max_window_size, float slope, 
   fromPCLPointCloud2 (triangles.cloud, *tri_cloud);
 
   //PointIndicesPtr addtoground (new PointIndices);
-  addtoground->indices.clear();
+  addtoground->indices.clear ();
 
-  for (int t = 0; t < triangles.polygons.size(); ++t)
+  for (int t = 0; t < triangles.polygons.size (); ++t)
   {
     // cropping input cloud to only those points within the first triangle
     CropHull<PointXYZ> ch;
