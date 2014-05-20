@@ -1,6 +1,6 @@
 set(SUBSYS_NAME segmentation)
 set(SUBSYS_DESC "Point cloud segmentation library")
-set(SUBSYS_DEPS common geometry search sample_consensus kdtree octree features filters ml)
+set(SUBSYS_DEPS common geometry search sample_consensus kdtree octree features filters ml surface)
 
 set(build TRUE)
 PCL_SUBSYS_OPTION(build "${SUBSYS_NAME}" "${SUBSYS_DESC}" ON)
@@ -26,6 +26,7 @@ if(build)
         src/conditional_euclidean_clustering.cpp
         src/supervoxel_clustering.cpp
 	src/grabcut_segmentation.cpp
+        src/progressive_densification_filter.cpp
         src/progressive_morphological_filter.cpp
         src/approximate_progressive_morphological_filter.cpp
        )
@@ -65,6 +66,7 @@ if(build)
         "include/pcl/${SUBSYS_NAME}/conditional_euclidean_clustering.h"
         "include/pcl/${SUBSYS_NAME}/supervoxel_clustering.h"
 	"include/pcl/${SUBSYS_NAME}/grabcut_segmentation.h"
+        "include/pcl/${SUBSYS_NAME}/progressive_densification_filter.h"
         "include/pcl/${SUBSYS_NAME}/progressive_morphological_filter.h"
         "include/pcl/${SUBSYS_NAME}/approximate_progressive_morphological_filter.h"
         )
@@ -99,6 +101,7 @@ if(build)
         "include/pcl/${SUBSYS_NAME}/impl/conditional_euclidean_clustering.hpp"
         "include/pcl/${SUBSYS_NAME}/impl/supervoxel_clustering.hpp"
 	"include/pcl/${SUBSYS_NAME}/impl/grabcut_segmentation.hpp"
+        "include/pcl/${SUBSYS_NAME}/impl/progressive_densification_filter.hpp"
         "include/pcl/${SUBSYS_NAME}/impl/progressive_morphological_filter.hpp"
         "include/pcl/${SUBSYS_NAME}/impl/approximate_progressive_morphological_filter.hpp"
         )
@@ -118,7 +121,7 @@ if(build)
     set(LIB_NAME "pcl_${SUBSYS_NAME}")
     include_directories("${CMAKE_CURRENT_SOURCE_DIR}/include")
     PCL_ADD_LIBRARY("${LIB_NAME}" "${SUBSYS_NAME}" ${srcs} ${incs} ${impl_incs})
-    target_link_libraries("${LIB_NAME}" pcl_search pcl_sample_consensus pcl_filters pcl_ml pcl_features)
+    target_link_libraries("${LIB_NAME}" pcl_search pcl_sample_consensus pcl_filters pcl_ml pcl_features pcl_surface)
     PCL_MAKE_PKGCONFIG("${LIB_NAME}" "${SUBSYS_NAME}" "${SUBSYS_DESC}" "${SUBSYS_DEPS}" "" "" "" "")
 
     # Install include files
