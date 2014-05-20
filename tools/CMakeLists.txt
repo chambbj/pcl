@@ -144,6 +144,9 @@ if (build)
   PCL_ADD_EXECUTABLE(pcl_progressive_morphological_filter "${SUBSYS_NAME}" progressive_morphological_filter.cpp)
   target_link_libraries(pcl_progressive_morphological_filter pcl_common pcl_io pcl_filters pcl_segmentation)
 
+  PCL_ADD_EXECUTABLE(pcl_progressive_densification "${SUBSYS_NAME}" progressive_densification.cpp)
+  target_link_libraries(pcl_progressive_densification pcl_common pcl_io pcl_features pcl_filters pcl_surface)
+
   PCL_ADD_EXECUTABLE(pcl_generate "${SUBSYS_NAME}" generate.cpp)
   target_link_libraries(pcl_generate pcl_common pcl_io)
 
