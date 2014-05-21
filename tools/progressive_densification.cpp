@@ -44,6 +44,7 @@
 #include <pcl/PCLPointCloud2.h>
 #include <pcl/point_types.h>
 #include <pcl/io/pcd_io.h>
+#include <pcl/common/common.h>
 #include <pcl/console/print.h>
 #include <pcl/console/parse.h>
 #include <pcl/console/time.h>
@@ -64,13 +65,9 @@ typedef PointCloud<PointXYZ> Cloud;
 typedef Cloud::Ptr CloudPtr;
 typedef const Cloud::ConstPtr ConstCloudPtr;
 
-int default_max_window_size = 33;
-float default_slope = 0.7f;
-float default_max_distance = 10.0f;
-float default_initial_distance = 0.15f;
-float default_cell_size = 1.0f;
-float default_base = 2.0f;
-bool default_exponential = true;
+float default_resolution = 10.0f;
+float default_dist_thresh = 1.5f;
+float default_angle_thresh = 6.0f * M_PI / 180.0f;
 int default_verbosity_level = 3;
 
 void
@@ -78,26 +75,14 @@ printHelp (int, char **argv)
 {
   print_error ("Syntax is: %s input.pcd output.pcd <options>\n", argv[0]);
   print_info ("  where options are:\n");
-  print_info ("                     -max_window_size X = maximum window size (default: ");
-  print_value ("%d", default_max_window_size);
+  print_info ("                     -resolution X = resolution to compute grid minimums (default: ");
+  print_value ("%f", default_resolution);
   print_info (")\n");
-  print_info ("                     -slope X = slope value to compute threshold (default: ");
-  print_value ("%f", default_slope);
+  print_info ("                     -dist_thresh X = dist_thresh to compute grid minimums (default: ");
+  print_value ("%f", default_dist_thresh);
   print_info (")\n");
-  print_info ("                     -max_distnace X = maximum distance from parameterized ground surface to be considered ground (default: ");
-  print_value ("%f", default_max_distance);
-  print_info (")\n");
-  print_info ("                     -initial_distance X = initial distance from parameterized ground surface to be considered ground (default: ");
-  print_value ("%f", default_initial_distance);
-  print_info (")\n");
-  print_info ("                     -cell_size X = cell size (default: ");
-  print_value ("%f", default_cell_size);
-  print_info (")\n");
-  print_info ("                     -base X = base to be used in computing progressive window sizes (default: ");
-  print_value ("%f", default_base);
-  print_info (")\n");
-  print_info ("                     -exponential X = use exponential growth? (default: ");
-  print_value ("%s", default_exponential?"true":"false");
+  print_info ("                     -angle_thresh X = angle_thresh to compute grid minimums (default: ");
+  print_value ("%f", default_angle_thresh);
   print_info (")\n");
   print_info ("                     -input_dir X  = batch process all PCD files found in input_dir\n");
   print_info ("                     -output_dir X = save the processed files from input_dir in this directory\n");
@@ -147,8 +132,10 @@ saveCloud (const std::string &filename, const Cloud &output)
 }
 
 void
-getAnglesToVertices (PointXYZ p, PointXYZ v1, PointXYZ v2, PointXYZ v3, float &angle1, float &angle2, float &angle3)
+getAnglesToVertices (PointXYZ p, PointXYZ v1, PointXYZ v2, PointXYZ v3, Eigen::Vector3f &angles)
 {
+  angles.setZero ();
+
   Eigen::Vector3f vv1, vv2, n;
   vv1[0] = v2.x - v1.x;
   vv1[1] = v2.y - v1.y;
@@ -171,13 +158,13 @@ getAnglesToVertices (PointXYZ p, PointXYZ v1, PointXYZ v2, PointXYZ v3, float &a
   l3[1] = p.y - v3.y;
   l3[2] = p.z - v3.z;
 
-  angle1 = -std::asin ((n[0]*l1[0]+n[1]*l1[1]+n[2]*l1[2])/ (std::sqrt (n[0]*n[0]+n[1]*n[1]+n[2]*n[2])*std::sqrt (l1[0]*l1[0]+l1[1]*l1[1]+l1[2]*l1[2])));
-  angle2 = -std::asin ((n[0]*l2[0]+n[1]*l2[1]+n[2]*l2[2])/ (std::sqrt (n[0]*n[0]+n[1]*n[1]+n[2]*n[2])*std::sqrt (l2[0]*l2[0]+l2[1]*l2[1]+l2[2]*l2[2])));
-  angle2 = -std::asin ((n[0]*l3[0]+n[1]*l3[1]+n[2]*l3[2])/ (std::sqrt (n[0]*n[0]+n[1]*n[1]+n[2]*n[2])*std::sqrt (l3[0]*l3[0]+l3[1]*l3[1]+l3[2]*l3[2])));
+  angles[0] = -std::asin (n.dot (l1) / (n.norm ()*l1.norm ()));
+  angles[1] = -std::asin (n.dot (l2) / (n.norm ()*l2.norm ()));
+  angles[2] = -std::asin (n.dot (l3) / (n.norm ()*l3.norm ()));
 }
 
 void
-compute (ConstCloudPtr &input, Cloud &output, int max_window_size, float slope, float max_distance, float initial_distance, float cell_size, float base, bool exponential)
+compute (ConstCloudPtr &input, Cloud &output, float resolution, float dist_thresh, float angle_thresh)
 {
   // Estimate
   TicToc tt;
@@ -187,7 +174,7 @@ compute (ConstCloudPtr &input, Cloud &output, int max_window_size, float slope, 
 
   // start by finding grid minimums (user variable res, larger than buildings)
   CloudPtr cloud_out (new Cloud);
-  GridMinimum<PointXYZ> gm (10.0f);
+  GridMinimum<PointXYZ> gm (resolution);
   gm.setInputCloud (input);
   gm.filter (*cloud_out);
 
@@ -251,7 +238,6 @@ compute (ConstCloudPtr &input, Cloud &output, int max_window_size, float slope, 
     ch.setHullIndices (first_triangle);
     std::vector<int> hidx;
     ch.filter (hidx);
-    std::cerr << hidx.size () << " in triangle " << t << std::endl;
 
     // getting vertices of first triangle
     PointXYZ a = tri_cloud->points[triangles.polygons[t].vertices[0]];
@@ -264,21 +250,33 @@ compute (ConstCloudPtr &input, Cloud &output, int max_window_size, float slope, 
                                             b.getArray3fMap (),
                                             c.getArray3fMap ());
 
+    Eigen::Vector4f pn;
+    pn[0] = eigen_plane.normal ()[0];
+    pn[1] = eigen_plane.normal ()[1];
+    pn[2] = eigen_plane.normal ()[2];
+    pn[3] = 0.0f;
+
+    Eigen::Vector4f aa = a.getArray4fMap ();
+    Eigen::Vector4f bb = b.getArray4fMap ();
+    Eigen::Vector4f cc = c.getArray4fMap ();
+
+    float m_pi_over_two = M_PI * 0.5f;
+
     for (int i = 0; i < hidx.size (); ++i)
     {
-      float angle1, angle2, angle3, dist;
-      getAnglesToVertices (input->points[hidx[i]], a, b, c, angle1, angle2, angle3);
-      dist = eigen_plane.absDistance (input->points[hidx[i]].getArray3fMap ());
-      std::cerr << dist << ", " << angle1*180/M_PI << ", " << angle2*180/M_PI << ", " << angle3*180/M_PI << std::endl;
-      if (dist < 1.5 && angle1 < 6*M_PI/180 && angle2 < 6*M_PI/180 && angle3 < 6*M_PI/180)
+      Eigen::Vector3f angles;
+      Eigen::Vector3f p3 = input->points[hidx[i]].getArray3fMap ();
+      Eigen::Vector4f p4 = input->points[hidx[i]].getArray4fMap ();
+      angles[0] = m_pi_over_two - getAngle3D(pn, p4-aa);
+      angles[1] = m_pi_over_two - getAngle3D(pn, p4-bb);
+      angles[2] = m_pi_over_two - getAngle3D(pn, p4-cc);
+      float dist = eigen_plane.absDistance (p3);
+      if (dist < dist_thresh && angles[0] < angle_thresh && angles[1] < angle_thresh && angles[2] < angle_thresh)
       {
-        std::cerr << input->points[hidx[i]] << std::endl;
         addtoground->indices.push_back (hidx[i]);
       }
     }
   }
-
-  std::cerr << addtoground->indices.size () << std::endl;
 
   ExtractIndices<PointXYZ> extract;
   CloudPtr ground (new Cloud);
@@ -339,7 +337,6 @@ compute (ConstCloudPtr &input, Cloud &output, int max_window_size, float slope, 
     ch.setHullIndices (first_triangle);
     std::vector<int> hidx;
     ch.filter (hidx);
-    std::cerr << hidx.size () << " in triangle " << t << std::endl;
 
     // getting vertices of first triangle
     PointXYZ a = tri_cloud->points[triangles.polygons[t].vertices[0]];
@@ -352,21 +349,33 @@ compute (ConstCloudPtr &input, Cloud &output, int max_window_size, float slope, 
                                             b.getArray3fMap (),
                                             c.getArray3fMap ());
 
+    Eigen::Vector4f pn;
+    pn[0] = eigen_plane.normal ()[0];
+    pn[1] = eigen_plane.normal ()[1];
+    pn[2] = eigen_plane.normal ()[2];
+    pn[3] = 0.0f;
+
+    Eigen::Vector4f aa = a.getArray4fMap ();
+    Eigen::Vector4f bb = b.getArray4fMap ();
+    Eigen::Vector4f cc = c.getArray4fMap ();
+
+    float m_pi_over_two = M_PI * 0.5f;
+
     for (int i = 0; i < hidx.size (); ++i)
     {
-      float angle1, angle2, angle3, dist;
-      getAnglesToVertices (input->points[hidx[i]], a, b, c, angle1, angle2, angle3);
-      dist = eigen_plane.absDistance (input->points[hidx[i]].getArray3fMap ());
-      std::cerr << dist << ", " << angle1*180/M_PI << ", " << angle2*180/M_PI << ", " << angle3*180/M_PI << std::endl;
-      if (dist < 1.5 && angle1 < 6*M_PI/180 && angle2 < 6*M_PI/180 && angle3 < 6*M_PI/180)
+      Eigen::Vector3f angles;
+      Eigen::Vector3f p3 = input->points[hidx[i]].getArray3fMap ();
+      Eigen::Vector4f p4 = input->points[hidx[i]].getArray4fMap ();
+      angles[0] = m_pi_over_two - getAngle3D(pn, p4-aa);
+      angles[1] = m_pi_over_two - getAngle3D(pn, p4-bb);
+      angles[2] = m_pi_over_two - getAngle3D(pn, p4-cc);
+      float dist = eigen_plane.absDistance (p3);
+      if (dist < dist_thresh && angles[0] < angle_thresh && angles[1] < angle_thresh && angles[2] < angle_thresh)
       {
-        std::cerr << input->points[hidx[i]] << std::endl;
         addtoground->indices.push_back (hidx[i]);
       }
     }
   }
-
-  std::cerr << addtoground->indices.size () << std::endl;
 
   extract.setInputCloud (input);
   extract.setIndices (addtoground);
@@ -383,7 +392,7 @@ compute (ConstCloudPtr &input, Cloud &output, int max_window_size, float slope, 
 }
 
 int
-batchProcess (const vector<string> &pcd_files, string &output_dir, int max_window_size, float slope, float max_distance, float initial_distance, float cell_size, float base, bool exponential)
+batchProcess (const vector<string> &pcd_files, string &output_dir, float resolution, float dist_thresh, float angle_thresh)
 {
   vector<string> st;
   for (size_t i = 0; i < pcd_files.size (); ++i)
@@ -395,7 +404,7 @@ batchProcess (const vector<string> &pcd_files, string &output_dir, int max_windo
 
     // Perform the feature estimation
     Cloud output;
-    compute (cloud, output, max_window_size, slope, max_distance, initial_distance, cell_size, base, exponential);
+    compute (cloud, output, resolution, dist_thresh, angle_thresh);
 
     // Prepare output file name
     string filename = pcd_files[i];
@@ -415,7 +424,7 @@ batchProcess (const vector<string> &pcd_files, string &output_dir, int max_windo
 int
 main (int argc, char** argv)
 {
-  print_info ("Filter a point cloud using the pcl::ProgressiveMorphologicalFilter. For more information, use: %s -h\n", argv[0]);
+  print_info ("Filter a point cloud using the pcl::ProgressiveDensification. For more information, use: %s -h\n", argv[0]);
 
   if (argc < 3)
   {
@@ -426,21 +435,13 @@ main (int argc, char** argv)
   bool batch_mode = false;
 
   // Command line parsing
-  int max_window_size = default_max_window_size;
-  float slope = default_slope;
-  float max_distance = default_max_distance;
-  float initial_distance = default_initial_distance;
-  float cell_size = default_cell_size;
-  float base = default_base;
-  bool exponential = default_exponential;
+  float resolution = default_resolution;
+  float dist_thresh = default_dist_thresh;
+  float angle_thresh = default_angle_thresh;
   int verbosity_level = default_verbosity_level;
-  parse_argument (argc, argv, "-max_window_size", max_window_size);
-  parse_argument (argc, argv, "-slope", slope);
-  parse_argument (argc, argv, "-max_distance", max_distance);
-  parse_argument (argc, argv, "-initial_distance", initial_distance);
-  parse_argument (argc, argv, "-cell_size", cell_size);
-  parse_argument (argc, argv, "-base", base);
-  parse_argument (argc, argv, "-exponential", exponential);
+  parse_argument (argc, argv, "-resolution", resolution);
+  parse_argument (argc, argv, "-dist_thresh", dist_thresh);
+  parse_argument (argc, argv, "-angle_thresh", angle_thresh);
   parse_argument (argc, argv, "-verbosity", verbosity_level);
   string input_dir, output_dir;
   if (parse_argument (argc, argv, "-input_dir", input_dir) != -1)
@@ -501,7 +502,7 @@ main (int argc, char** argv)
 
     // Perform the feature estimation
     Cloud output;
-    compute (cloud, output, max_window_size, slope, max_distance, initial_distance, cell_size, base, exponential);
+    compute (cloud, output, resolution, dist_thresh, angle_thresh);
 
     // Save into the second file
     //saveCloud (argv[p_file_indices[1]], output);
@@ -521,7 +522,7 @@ main (int argc, char** argv)
           PCL_INFO ("[Batch processing mode] Added %s for processing.\n", itr->path ().string ().c_str ());
         }
       }
-      batchProcess (pcd_files, output_dir, max_window_size, slope, max_distance, initial_distance, cell_size, base, exponential);
+      batchProcess (pcd_files, output_dir, resolution, dist_thresh, angle_thresh);
     }
     else
     {
