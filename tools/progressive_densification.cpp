@@ -131,28 +131,14 @@ saveCloud (const std::string &filename, const Cloud &output)
 }
 
 void
-compute (ConstCloudPtr &input, Cloud &output, float resolution, float dist_thresh, float angle_thresh)
+iterate (ConstCloudPtr &original, ConstCloudPtr &input, Cloud &output, float dist_thresh, float angle_thresh)
 {
-  // Estimate
-  TicToc tt;
-  tt.tic ();
-
-  print_highlight (stderr, "Computing ");
-
-  // start by finding grid minimums (user variable res, larger than buildings)
-  CloudPtr cloud_out (new Cloud);
-  GridMinimum<PointXYZ> gm (resolution);
-  gm.setInputCloud (input);
-  gm.filter (*cloud_out);
-
-  saveCloud ("gm.pcd", *cloud_out);
-
   // Normal estimation*
   NormalEstimation<PointXYZ, Normal> n;
   PointCloud<Normal>::Ptr normals (new PointCloud<Normal>);
   search::KdTree<PointXYZ>::Ptr tree (new search::KdTree<PointXYZ>);
-  tree->setInputCloud (cloud_out);
-  n.setInputCloud (cloud_out);
+  tree->setInputCloud (input);
+  n.setInputCloud (input);
   n.setSearchMethod (tree);
   n.setKSearch (20);
   n.compute (*normals);
@@ -160,7 +146,7 @@ compute (ConstCloudPtr &input, Cloud &output, float resolution, float dist_thres
 
   // Concatenate the XYZ and normal fields*
   PointCloud<PointNormal>::Ptr cloud_with_normals (new PointCloud<PointNormal>);
-  concatenateFields (*cloud_out, *normals, *cloud_with_normals);
+  concatenateFields (*input, *normals, *cloud_with_normals);
   //* cloud_with_normals = cloud + normals
 
   // Create search tree*
@@ -197,7 +183,7 @@ compute (ConstCloudPtr &input, Cloud &output, float resolution, float dist_thres
   {
     // cropping input cloud to only those points within the first triangle
     CropHull<PointXYZ> ch;
-    ch.setInputCloud (input);
+    ch.setInputCloud (original);
     ch.setHullCloud (tri_cloud);
     ch.setDim (2);
     std::vector<Vertices> first_triangle;
@@ -232,8 +218,8 @@ compute (ConstCloudPtr &input, Cloud &output, float resolution, float dist_thres
     for (int i = 0; i < hidx.size (); ++i)
     {
       Eigen::Vector3f angles;
-      Eigen::Vector3f p3 = input->points[hidx[i]].getArray3fMap ();
-      Eigen::Vector4f p4 = input->points[hidx[i]].getArray4fMap ();
+      Eigen::Vector3f p3 = original->points[hidx[i]].getArray3fMap ();
+      Eigen::Vector4f p4 = original->points[hidx[i]].getArray4fMap ();
       angles[0] = m_pi_over_two - getAngle3D (pn, p4-aa);
       angles[1] = m_pi_over_two - getAngle3D (pn, p4-bb);
       angles[2] = m_pi_over_two - getAngle3D (pn, p4-cc);
@@ -247,109 +233,37 @@ compute (ConstCloudPtr &input, Cloud &output, float resolution, float dist_thres
 
   ExtractIndices<PointXYZ> extract;
   CloudPtr ground (new Cloud);
-  extract.setInputCloud (input);
+  extract.setInputCloud (original);
   extract.setIndices (addtoground);
-  extract.filter (*ground);
-  *ground += *cloud_out;
-  saveCloud ("densify.pcd", *ground);
+  extract.filter (output);
+  output += *input;
+}
 
-// iteration 2
+void
+compute (ConstCloudPtr &input, Cloud &output, float resolution, float dist_thresh, float angle_thresh)
+{
+  // Estimate
+  TicToc tt;
+  tt.tic ();
 
-  // Normal estimation*
-  tree->setInputCloud (ground);
-  n.setInputCloud (ground);
-  n.setSearchMethod (tree);
-  n.setKSearch (20);
-  n.compute (*normals);
-  //* normals should not contain the point normals + surface curvatures
+  print_highlight (stderr, "Computing ");
 
-  // Concatenate the XYZ and normal fields*
-  concatenateFields (*ground, *normals, *cloud_with_normals);
-  //* cloud_with_normals = cloud + normals
+  // start by finding grid minimums (user variable res, larger than buildings)
+  CloudPtr cloud_mins (new Cloud);
+  GridMinimum<PointXYZ> gm (resolution);
+  gm.setInputCloud (input);
+  gm.filter (*cloud_mins);
+  saveCloud ("gm.pcd", *cloud_mins);
+  
+  CloudPtr cloud_f (new Cloud);
+  iterate (input, cloud_mins, *cloud_f, dist_thresh, angle_thresh);
+  saveCloud ("densify.pcd", *cloud_f);
 
-  // Create search tree*
-  tree2->setInputCloud (cloud_with_normals);
-
-  // Set the maximum distance between connected points (maximum edge length)
-  gp3.setSearchRadius (100.0);
-
-  // Set typical values for the parameters
-  gp3.setMu (2.5);
-  gp3.setMaximumNearestNeighbors (100);
-  gp3.setMaximumSurfaceAngle (M_PI/4); // 45 degrees
-  gp3.setMinimumAngle (M_PI/18); // 10 degrees
-  gp3.setMaximumAngle (2*M_PI/3); // 120 degrees
-  gp3.setNormalConsistency (false);
-
-  // Get result
-  gp3.setInputCloud (cloud_with_normals);
-  gp3.setSearchMethod (tree2);
-  gp3.reconstruct (triangles);
-
-  // get the polygonmesh cloud
-  fromPCLPointCloud2 (triangles.cloud, *tri_cloud);
-
-  //PointIndicesPtr addtoground (new PointIndices);
-  addtoground->indices.clear ();
-
-  for (int t = 0; t < triangles.polygons.size (); ++t)
-  {
-    // cropping input cloud to only those points within the first triangle
-    CropHull<PointXYZ> ch;
-    ch.setInputCloud (input);
-    ch.setHullCloud (tri_cloud);
-    ch.setDim (2);
-    std::vector<Vertices> first_triangle;
-    first_triangle.push_back (triangles.polygons[t]);
-    ch.setHullIndices (first_triangle);
-    std::vector<int> hidx;
-    ch.filter (hidx);
-
-    // getting vertices of first triangle
-    PointXYZ a = tri_cloud->points[triangles.polygons[t].vertices[0]];
-    PointXYZ b = tri_cloud->points[triangles.polygons[t].vertices[1]];
-    PointXYZ c = tri_cloud->points[triangles.polygons[t].vertices[2]];
-
-    // get plane defined by vertices
-    Eigen::Hyperplane<float, 3> eigen_plane =
-      Eigen::Hyperplane<float, 3>::Through (a.getArray3fMap (),
-                                            b.getArray3fMap (),
-                                            c.getArray3fMap ());
-
-    Eigen::Vector4f pn;
-    pn[0] = eigen_plane.normal ()[0];
-    pn[1] = eigen_plane.normal ()[1];
-    pn[2] = eigen_plane.normal ()[2];
-    pn[3] = 0.0f;
-
-    Eigen::Vector4f aa = a.getArray4fMap ();
-    Eigen::Vector4f bb = b.getArray4fMap ();
-    Eigen::Vector4f cc = c.getArray4fMap ();
-
-    float m_pi_over_two = M_PI * 0.5f;
-
-    for (int i = 0; i < hidx.size (); ++i)
-    {
-      Eigen::Vector3f angles;
-      Eigen::Vector3f p3 = input->points[hidx[i]].getArray3fMap ();
-      Eigen::Vector4f p4 = input->points[hidx[i]].getArray4fMap ();
-      angles[0] = m_pi_over_two - getAngle3D (pn, p4-aa);
-      angles[1] = m_pi_over_two - getAngle3D (pn, p4-bb);
-      angles[2] = m_pi_over_two - getAngle3D (pn, p4-cc);
-      float dist = eigen_plane.absDistance (p3);
-      if (dist < dist_thresh && angles[0] < angle_thresh && angles[1] < angle_thresh && angles[2] < angle_thresh)
-      {
-        addtoground->indices.push_back (hidx[i]);
-      }
-    }
-  }
-
-  extract.setInputCloud (input);
-  extract.setIndices (addtoground);
-  CloudPtr ground2 (new Cloud);
-  extract.filter (*ground2);
-  *ground2 += *ground;
-  saveCloud ("densify2.pcd", *ground2);
+  CloudPtr cloud_f2 (new Cloud);
+  iterate (input, cloud_f, *cloud_f2, dist_thresh, angle_thresh);
+  saveCloud ("densify2.pcd", *cloud_f2);
+  
+  iterate (input, cloud_f2, output, dist_thresh, angle_thresh);
 
   print_info ("[done, ");
   print_value ("%g", tt.toc ());
@@ -381,7 +295,7 @@ batchProcess (const vector<string> &pcd_files, string &output_dir, float resolut
     // Save into the second file
     stringstream ss;
     ss << output_dir << "/" << st.at (st.size () - 1);
-    //saveCloud (ss.str (), output);
+    saveCloud (ss.str (), output);
   }
   return (0);
 }
@@ -472,7 +386,7 @@ main (int argc, char** argv)
     compute (cloud, output, resolution, dist_thresh, angle_thresh);
 
     // Save into the second file
-    //saveCloud (argv[p_file_indices[1]], output);
+    saveCloud (argv[p_file_indices[1]], output);
   }
   else
   {
