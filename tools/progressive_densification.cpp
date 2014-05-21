@@ -40,7 +40,6 @@
 
 #include <Eigen/Geometry>
 
-//#include <pcl/ros/conversions.h>
 #include <pcl/PCLPointCloud2.h>
 #include <pcl/point_types.h>
 #include <pcl/io/pcd_io.h>
@@ -129,38 +128,6 @@ saveCloud (const std::string &filename, const Cloud &output)
   print_info (" ms : ");
   print_value ("%d", output.width * output.height);
   print_info (" points]\n");
-}
-
-void
-getAnglesToVertices (PointXYZ p, PointXYZ v1, PointXYZ v2, PointXYZ v3, Eigen::Vector3f &angles)
-{
-  angles.setZero ();
-
-  Eigen::Vector3f vv1, vv2, n;
-  vv1[0] = v2.x - v1.x;
-  vv1[1] = v2.y - v1.y;
-  vv1[2] = v2.z - v1.z;
-  vv2[0] = v3.x - v1.x;
-  vv2[1] = v3.y - v1.y;
-  vv2[2] = v3.z - v1.z;
-  n[0] = vv1[1]*vv2[2] - vv1[2]*vv2[1];
-  n[1] = vv1[2]*vv2[0] - vv1[0]*vv2[2];
-  n[2] = vv1[0]*vv2[1] - vv1[1]*vv2[0];
-
-  Eigen::Vector3f l1, l2, l3;
-  l1[0] = p.x - v1.x;
-  l1[1] = p.y - v1.y;
-  l1[2] = p.z - v1.z;
-  l2[0] = p.x - v2.x;
-  l2[1] = p.y - v2.y;
-  l2[2] = p.z - v2.z;
-  l3[0] = p.x - v3.x;
-  l3[1] = p.y - v3.y;
-  l3[2] = p.z - v3.z;
-
-  angles[0] = -std::asin (n.dot (l1) / (n.norm ()*l1.norm ()));
-  angles[1] = -std::asin (n.dot (l2) / (n.norm ()*l2.norm ()));
-  angles[2] = -std::asin (n.dot (l3) / (n.norm ()*l3.norm ()));
 }
 
 void
