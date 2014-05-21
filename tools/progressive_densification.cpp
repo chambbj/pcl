@@ -267,9 +267,9 @@ compute (ConstCloudPtr &input, Cloud &output, float resolution, float dist_thres
       Eigen::Vector3f angles;
       Eigen::Vector3f p3 = input->points[hidx[i]].getArray3fMap ();
       Eigen::Vector4f p4 = input->points[hidx[i]].getArray4fMap ();
-      angles[0] = m_pi_over_two - getAngle3D(pn, p4-aa);
-      angles[1] = m_pi_over_two - getAngle3D(pn, p4-bb);
-      angles[2] = m_pi_over_two - getAngle3D(pn, p4-cc);
+      angles[0] = m_pi_over_two - getAngle3D (pn, p4-aa);
+      angles[1] = m_pi_over_two - getAngle3D (pn, p4-bb);
+      angles[2] = m_pi_over_two - getAngle3D (pn, p4-cc);
       float dist = eigen_plane.absDistance (p3);
       if (dist < dist_thresh && angles[0] < angle_thresh && angles[1] < angle_thresh && angles[2] < angle_thresh)
       {
@@ -366,9 +366,9 @@ compute (ConstCloudPtr &input, Cloud &output, float resolution, float dist_thres
       Eigen::Vector3f angles;
       Eigen::Vector3f p3 = input->points[hidx[i]].getArray3fMap ();
       Eigen::Vector4f p4 = input->points[hidx[i]].getArray4fMap ();
-      angles[0] = m_pi_over_two - getAngle3D(pn, p4-aa);
-      angles[1] = m_pi_over_two - getAngle3D(pn, p4-bb);
-      angles[2] = m_pi_over_two - getAngle3D(pn, p4-cc);
+      angles[0] = m_pi_over_two - getAngle3D (pn, p4-aa);
+      angles[1] = m_pi_over_two - getAngle3D (pn, p4-bb);
+      angles[2] = m_pi_over_two - getAngle3D (pn, p4-cc);
       float dist = eigen_plane.absDistance (p3);
       if (dist < dist_thresh && angles[0] < angle_thresh && angles[1] < angle_thresh && angles[2] < angle_thresh)
       {
