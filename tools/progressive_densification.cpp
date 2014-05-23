@@ -286,7 +286,7 @@ iterate (ConstCloudPtr &original, ConstCloudPtr &input, Cloud &output, float max
   gp3.setNormalConsistency (false);
 
   // Get result
-  std::cerr << "Points into triangulation " << cloud_with_normals->points.size() << std::endl;
+  std::cerr << "Points into triangulation " << cloud_with_normals->points.size () << std::endl;
   gp3.setInputCloud (cloud_with_normals);
   gp3.setSearchMethod (tree2);
   gp3.reconstruct (triangles);
@@ -297,9 +297,9 @@ iterate (ConstCloudPtr &original, ConstCloudPtr &input, Cloud &output, float max
 
   float m_pi_over_two = M_PI * 0.5f;
 
-  std::cerr << "Triangulation composed of " << triangles.polygons.size() << " triangles" << std::endl;
+  std::cerr << "Triangulation composed of " << triangles.polygons.size () << " triangles" << std::endl;
 
-  accumulator_set<float, stats<tag::median(with_p_square_quantile) > > dist_acc, angle_acc;
+  accumulator_set<float, stats<tag::median (with_p_square_quantile) > > dist_acc, angle_acc;
 
   for (int t = 0; t < triangles.polygons.size (); ++t)
   {
@@ -353,30 +353,30 @@ iterate (ConstCloudPtr &original, ConstCloudPtr &input, Cloud &output, float max
         continue;
 
       // push distance and angle
-      dist_acc(dist);
-      angle_acc(angles[0]);
-      angle_acc(angles[1]);
-      angle_acc(angles[2]);
+      dist_acc (dist);
+      angle_acc (angles[0]);
+      angle_acc (angles[1]);
+      angle_acc (angles[2]);
     }
   }
-  
+
   float dist_thresh = max_dist_thresh;
   float angle_thresh = max_angle_thresh;
 
   if (adapt)
   {
-    if (!pcl_isnan(median(dist_acc)))
-      dist_thresh = median(dist_acc);
+    if (!pcl_isnan (median (dist_acc)))
+      dist_thresh = median (dist_acc);
 
-    if (!pcl_isnan(median(angle_acc)))
-      angle_thresh = median(angle_acc);
+    if (!pcl_isnan (median (angle_acc)))
+      angle_thresh = median (angle_acc);
 
     if (dist_thresh > max_dist_thresh) dist_thresh = max_dist_thresh;
     if (angle_thresh > max_angle_thresh) angle_thresh = max_angle_thresh;
   }
- 
-  std::cerr << "Distance threshold set at " << dist_thresh << " (median was " << median(dist_acc) << ")" << std::endl;
-  std::cerr << "Angle threshold set at " << rad2deg(angle_thresh) << " (median was " << rad2deg(median(angle_acc)) << ")" << std::endl;
+
+  std::cerr << "Distance threshold set at " << dist_thresh << " (median was " << median (dist_acc) << ")" << std::endl;
+  std::cerr << "Angle threshold set at " << rad2deg (angle_thresh) << " (median was " << rad2deg (median (angle_acc)) << ")" << std::endl;
 
 
 
@@ -439,7 +439,7 @@ iterate (ConstCloudPtr &original, ConstCloudPtr &input, Cloud &output, float max
 
       // these should be identical, but they aren't in practice, but why
       //if (dist < dist_thresh && angles[0] < angle_thresh && angles[1] < angle_thresh && angles[2] < angle_thresh)
-      if (dist < dist_thresh && angles.maxCoeff() < angle_thresh)
+      if (dist < dist_thresh && angles.maxCoeff () < angle_thresh)
       {
         addtoground->indices.push_back (hidx[i]);
         /*
@@ -509,16 +509,16 @@ compute (ConstCloudPtr &input, Cloud &output, float resolution, float dist_thres
   cloud = cloud_mins;
   for (int i = 0; i < max_iters; ++i)
   {
-    std::cerr << "Densification starts with " << cloud->points.size() << " out of " << input->points.size() << " points." << std::endl;
+    std::cerr << "Densification starts with " << cloud->points.size () << " out of " << input->points.size () << " points." << std::endl;
     if (i == 0)
       iterate (input, cloud, *cloud_f, dist_thresh, angle_thresh, false);
     else
       iterate (input, cloud, *cloud_f, dist_thresh, angle_thresh, true);
-    int new_pts = cloud_f->points.size() - cloud->points.size();
-  
+    int new_pts = cloud_f->points.size () - cloud->points.size ();
+
     std::cerr << "Iteration " << i << " added " << new_pts << " points." << std::endl;
-    std::cerr << "Ground now has " << cloud_f->points.size() << " points." << std::endl;
-    
+    std::cerr << "Ground now has " << cloud_f->points.size () << " points." << std::endl;
+
     cloud.swap (cloud_f);
     if (new_pts == 0)
       break;
