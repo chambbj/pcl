@@ -38,12 +38,17 @@
  * $Id$
  */
 
+#include <boost/accumulators/accumulators.hpp>
+#include <boost/accumulators/statistics/stats.hpp>
+#include <boost/accumulators/statistics/median.hpp>
+
 #include <Eigen/Geometry>
 
 #include <pcl/PCLPointCloud2.h>
 #include <pcl/point_types.h>
 #include <pcl/io/pcd_io.h>
 #include <pcl/common/common.h>
+#include <pcl/common/angles.h>
 #include <pcl/console/print.h>
 #include <pcl/console/parse.h>
 #include <pcl/console/time.h>
@@ -58,6 +63,7 @@ using namespace std;
 using namespace pcl;
 using namespace pcl::io;
 using namespace pcl::console;
+using namespace boost::accumulators;
 
 typedef PointXYZ PointType;
 typedef PointCloud<PointXYZ> Cloud;
@@ -66,7 +72,7 @@ typedef const Cloud::ConstPtr ConstCloudPtr;
 
 float default_resolution = 10.0f;
 float default_dist_thresh = 1.5f;
-float default_angle_thresh = 6.0f * M_PI / 180.0f;
+float default_angle_thresh = 6.0f;
 int default_verbosity_level = 3;
 int default_max_iters = 3;
 
@@ -134,8 +140,9 @@ saveCloud (const std::string &filename, const Cloud &output)
   print_info (" points]\n");
 }
 
+/*
 void
-iterate (ConstCloudPtr &original, ConstCloudPtr &input, Cloud &output, float dist_thresh, float angle_thresh)
+getInitialParams (ConstCloudPtr &original, ConstCloudPtr &input)
 {
   // Normal estimation*
   NormalEstimation<PointXYZ, Normal> n;
@@ -181,7 +188,7 @@ iterate (ConstCloudPtr &original, ConstCloudPtr &input, Cloud &output, float dis
   CloudPtr tri_cloud (new Cloud);
   fromPCLPointCloud2 (triangles.cloud, *tri_cloud);
 
-  PointIndicesPtr addtoground (new PointIndices);
+  accumulator_set<float, stats<tag::median(with_p_square_quantile) > > dist_acc, angle_acc;
 
   for (int t = 0; t < triangles.polygons.size (); ++t)
   {
@@ -228,11 +235,250 @@ iterate (ConstCloudPtr &original, ConstCloudPtr &input, Cloud &output, float dis
       angles[1] = m_pi_over_two - getAngle3D (pn, p4-bb);
       angles[2] = m_pi_over_two - getAngle3D (pn, p4-cc);
       float dist = eigen_plane.absDistance (p3);
-      if (dist < dist_thresh && angles[0] < angle_thresh && angles[1] < angle_thresh && angles[2] < angle_thresh)
+
+      // push distance and angle
+      dist_acc(dist);
+      angle_acc(angles[0]);
+      angle_acc(angles[1]);
+      angle_acc(angles[2]);
+    }
+  }
+  std::cerr << median(dist_acc) << ", " << median(angle_acc)*180/M_PI << std::endl;
+}
+*/
+
+void
+iterate (ConstCloudPtr &original, ConstCloudPtr &input, Cloud &output, float max_dist_thresh, float max_angle_thresh, bool adapt=false)
+{
+  // Normal estimation*
+  NormalEstimation<PointXYZ, Normal> n;
+  PointCloud<Normal>::Ptr normals (new PointCloud<Normal>);
+  search::KdTree<PointXYZ>::Ptr tree (new search::KdTree<PointXYZ>);
+  tree->setInputCloud (input);
+  n.setInputCloud (input);
+  n.setSearchMethod (tree);
+  n.setKSearch (20);
+  n.compute (*normals);
+  //* normals should not contain the point normals + surface curvatures
+
+  // Concatenate the XYZ and normal fields*
+  PointCloud<PointNormal>::Ptr cloud_with_normals (new PointCloud<PointNormal>);
+  concatenateFields (*input, *normals, *cloud_with_normals);
+  //* cloud_with_normals = cloud + normals
+
+  // Create search tree*
+  search::KdTree<PointNormal>::Ptr tree2 (new search::KdTree<PointNormal>);
+  tree2->setInputCloud (cloud_with_normals);
+
+  // Initialize objects
+  GreedyProjectionTriangulation<PointNormal> gp3;
+  PolygonMesh triangles;
+
+  // Set the maximum distance between connected points (maximum edge length)
+  gp3.setSearchRadius (100.0);
+
+  // Set typical values for the parameters
+  gp3.setMu (2.5);
+  gp3.setMaximumNearestNeighbors (100);
+  gp3.setMaximumSurfaceAngle (M_PI/4); // 45 degrees
+  gp3.setMinimumAngle (M_PI/18); // 10 degrees
+  gp3.setMaximumAngle (2*M_PI/3); // 120 degrees
+  gp3.setNormalConsistency (false);
+
+  // Get result
+  std::cerr << "Points into triangulation " << cloud_with_normals->points.size() << std::endl;
+  gp3.setInputCloud (cloud_with_normals);
+  gp3.setSearchMethod (tree2);
+  gp3.reconstruct (triangles);
+
+  // get the polygonmesh cloud
+  CloudPtr tri_cloud (new Cloud);
+  fromPCLPointCloud2 (triangles.cloud, *tri_cloud);
+
+  float m_pi_over_two = M_PI * 0.5f;
+
+  std::cerr << "Triangulation composed of " << triangles.polygons.size() << " triangles" << std::endl;
+
+  accumulator_set<float, stats<tag::median(with_p_square_quantile) > > dist_acc, angle_acc;
+
+  for (int t = 0; t < triangles.polygons.size (); ++t)
+  {
+    // cropping input cloud to only those points within the first triangle
+    CropHull<PointXYZ> ch;
+    ch.setInputCloud (original);
+    ch.setHullCloud (tri_cloud);
+    ch.setDim (2);
+    std::vector<Vertices> first_triangle;
+    first_triangle.push_back (triangles.polygons[t]);
+    ch.setHullIndices (first_triangle);
+    std::vector<int> hidx;
+    ch.filter (hidx);
+
+    // getting vertices of first triangle
+    PointXYZ a = tri_cloud->points[triangles.polygons[t].vertices[0]];
+    PointXYZ b = tri_cloud->points[triangles.polygons[t].vertices[1]];
+    PointXYZ c = tri_cloud->points[triangles.polygons[t].vertices[2]];
+
+    // get plane defined by vertices
+    Eigen::Hyperplane<float, 3> eigen_plane =
+      Eigen::Hyperplane<float, 3>::Through (a.getArray3fMap (),
+                                            b.getArray3fMap (),
+                                            c.getArray3fMap ());
+
+    Eigen::Vector4f pn;
+    pn[0] = eigen_plane.normal ()[0];
+    pn[1] = eigen_plane.normal ()[1];
+    pn[2] = eigen_plane.normal ()[2];
+    pn[3] = 0.0f;
+
+    if (pn[2] < 0)
+      pn *= -1;
+
+    Eigen::Vector4f aa = a.getArray4fMap ();
+    Eigen::Vector4f bb = b.getArray4fMap ();
+    Eigen::Vector4f cc = c.getArray4fMap ();
+
+    for (int i = 0; i < hidx.size (); ++i)
+    {
+      Eigen::Vector3f angles;
+      Eigen::Vector3f p3 = original->points[hidx[i]].getArray3fMap ();
+      Eigen::Vector4f p4 = original->points[hidx[i]].getArray4fMap ();
+      angles[0] = m_pi_over_two - getAngle3D (pn, p4-aa);
+      angles[1] = m_pi_over_two - getAngle3D (pn, p4-bb);
+      angles[2] = m_pi_over_two - getAngle3D (pn, p4-cc);
+      float dist = eigen_plane.absDistance (p3);
+
+      // this happens when the current point is one of the vertices
+      if (pcl_isnan (angles[0]) || pcl_isnan (angles[1]) || pcl_isnan (angles[2]))
+        continue;
+
+      // push distance and angle
+      dist_acc(dist);
+      angle_acc(angles[0]);
+      angle_acc(angles[1]);
+      angle_acc(angles[2]);
+    }
+  }
+  
+  float dist_thresh = max_dist_thresh;
+  float angle_thresh = max_angle_thresh;
+
+  if (adapt)
+  {
+    if (!pcl_isnan(median(dist_acc)))
+      dist_thresh = median(dist_acc);
+
+    if (!pcl_isnan(median(angle_acc)))
+      angle_thresh = median(angle_acc);
+
+    if (dist_thresh > max_dist_thresh) dist_thresh = max_dist_thresh;
+    if (angle_thresh > max_angle_thresh) angle_thresh = max_angle_thresh;
+  }
+ 
+  std::cerr << "Distance threshold set at " << dist_thresh << " (median was " << median(dist_acc) << ")" << std::endl;
+  std::cerr << "Angle threshold set at " << rad2deg(angle_thresh) << " (median was " << rad2deg(median(angle_acc)) << ")" << std::endl;
+
+
+
+  PointIndicesPtr addtoground (new PointIndices);
+
+  for (int t = 0; t < triangles.polygons.size (); ++t)
+  {
+    // cropping input cloud to only those points within the first triangle
+    CropHull<PointXYZ> ch;
+    ch.setInputCloud (original);
+    ch.setHullCloud (tri_cloud);
+    ch.setDim (2);
+    std::vector<Vertices> first_triangle;
+    first_triangle.push_back (triangles.polygons[t]);
+    ch.setHullIndices (first_triangle);
+    std::vector<int> hidx;
+    ch.filter (hidx);
+
+    // getting vertices of first triangle
+    PointXYZ a = tri_cloud->points[triangles.polygons[t].vertices[0]];
+    PointXYZ b = tri_cloud->points[triangles.polygons[t].vertices[1]];
+    PointXYZ c = tri_cloud->points[triangles.polygons[t].vertices[2]];
+
+    // get plane defined by vertices
+    Eigen::Hyperplane<float, 3> eigen_plane =
+      Eigen::Hyperplane<float, 3>::Through (a.getArray3fMap (),
+                                            b.getArray3fMap (),
+                                            c.getArray3fMap ());
+
+    Eigen::Vector4f pn;
+    pn[0] = eigen_plane.normal ()[0];
+    pn[1] = eigen_plane.normal ()[1];
+    pn[2] = eigen_plane.normal ()[2];
+    pn[3] = 0.0f;
+
+    if (pn[2] < 0)
+      pn *= -1;
+
+    Eigen::Vector4f aa = a.getArray4fMap ();
+    Eigen::Vector4f bb = b.getArray4fMap ();
+    Eigen::Vector4f cc = c.getArray4fMap ();
+
+    bool newpoint = false;
+    float bestdist = std::numeric_limits<float>::max ();
+    float bestangle = std::numeric_limits<float>::max ();
+    int bestidx = 0;
+    for (int i = 0; i < hidx.size (); ++i)
+    {
+      Eigen::Vector3f angles;
+      Eigen::Vector3f p3 = original->points[hidx[i]].getArray3fMap ();
+      Eigen::Vector4f p4 = original->points[hidx[i]].getArray4fMap ();
+      angles[0] = m_pi_over_two - getAngle3D (pn, p4-aa);
+      angles[1] = m_pi_over_two - getAngle3D (pn, p4-bb);
+      angles[2] = m_pi_over_two - getAngle3D (pn, p4-cc);
+      float dist = eigen_plane.absDistance (p3);
+
+      // this happens when the current point is one of the vertices
+      if (pcl_isnan (angles[0]) || pcl_isnan (angles[1]) || pcl_isnan (angles[2]))
+        continue;
+
+      // these should be identical, but they aren't in practice, but why
+      //if (dist < dist_thresh && angles[0] < angle_thresh && angles[1] < angle_thresh && angles[2] < angle_thresh)
+      if (dist < dist_thresh && angles.maxCoeff() < angle_thresh)
       {
         addtoground->indices.push_back (hidx[i]);
+        /*
+        if (dist < bestdist && angles.maxCoeff() < bestangle)
+        {
+          newpoint = true;
+          bestdist = dist;
+          bestangle = angles.maxCoeff();
+          bestidx = hidx[i];
+        }
+        */
+      }
+      else
+      {
+        /*
+        // check mirror point
+        float da = (p4-aa).norm ();
+        float db = (p4-bb).norm ();
+        float dc = (p4-cc).norm ();
+        if (da < db && da < dc)
+        {
+          // closest to vertex a
+          // find the mirror point
+          // find the triangle it belongs to
+          // find that triangle's normal
+          // compute distance to triangle
+          // compute angles to vertices
+        }
+        else if (db < da && db < dc)
+        {
+        }
+        else if (dc < da && dc < db)
+        {
+        }
+        */
       }
     }
+//    if (newpoint)
+//      addtoground->indices.push_back (bestidx);
   }
 
   ExtractIndices<PointXYZ> extract;
@@ -250,7 +496,7 @@ compute (ConstCloudPtr &input, Cloud &output, float resolution, float dist_thres
   TicToc tt;
   tt.tic ();
 
-  print_highlight (stderr, "Computing ");
+  print_highlight (stderr, "Computing \n");
 
   // start by finding grid minimums (user variable res, larger than buildings)
   CloudPtr cloud_mins (new Cloud);
@@ -263,24 +509,21 @@ compute (ConstCloudPtr &input, Cloud &output, float resolution, float dist_thres
   cloud = cloud_mins;
   for (int i = 0; i < max_iters; ++i)
   {
-    iterate (input, cloud, *cloud_f, dist_thresh, angle_thresh);
+    std::cerr << "Densification starts with " << cloud->points.size() << " out of " << input->points.size() << " points." << std::endl;
+    if (i == 0)
+      iterate (input, cloud, *cloud_f, dist_thresh, angle_thresh, false);
+    else
+      iterate (input, cloud, *cloud_f, dist_thresh, angle_thresh, true);
     int new_pts = cloud_f->points.size() - cloud->points.size();
+  
     std::cerr << "Iteration " << i << " added " << new_pts << " points." << std::endl;
+    std::cerr << "Ground now has " << cloud_f->points.size() << " points." << std::endl;
+    
     cloud.swap (cloud_f);
     if (new_pts == 0)
       break;
   }
   output = *cloud;
-
-//  CloudPtr cloud_f (new Cloud);
-//  iterate (input, cloud_mins, *cloud_f, dist_thresh, angle_thresh);
-//  saveCloud ("densify.pcd", *cloud_f);
-
-//  CloudPtr cloud_f2 (new Cloud);
-//  iterate (input, cloud_f, *cloud_f2, dist_thresh, angle_thresh);
-//  saveCloud ("densify2.pcd", *cloud_f2);
-  
-//  iterate (input, cloud_f2, output, dist_thresh, angle_thresh);
 
   print_info ("[done, ");
   print_value ("%g", tt.toc ());
@@ -341,6 +584,10 @@ main (int argc, char** argv)
   parse_argument (argc, argv, "-resolution", resolution);
   parse_argument (argc, argv, "-dist_thresh", dist_thresh);
   parse_argument (argc, argv, "-angle_thresh", angle_thresh);
+
+  // convert angle from deg to rad
+  angle_thresh = deg2rad (angle_thresh);
+
   parse_argument (argc, argv, "-verbosity", verbosity_level);
   parse_argument (argc, argv, "-max_iters", max_iters);
   string input_dir, output_dir;
