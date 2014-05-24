@@ -410,6 +410,20 @@ iterate (ConstCloudPtr &original, ConstCloudPtr &input, Cloud &output, float max
     PointXYZ b = tri_cloud->points[triangles.polygons[t].vertices[1]];
     PointXYZ c = tri_cloud->points[triangles.polygons[t].vertices[2]];
 
+    Eigen::Vector3f edges;
+    edges[0] = euclideanDistance(a,b);
+    edges[1] = euclideanDistance(b,c);
+    edges[2] = euclideanDistance(c,a);
+    float weight = edges.maxCoeff() / 5.0f;
+    if (weight > 1.0f)
+      weight = 1.0f;
+    else
+      weight *= weight;
+    // find max dist ab, ac, bc
+    // angle weight = max dist / 5.0
+    // if weight < 1, weight *= weight
+    // angle_thresh *= weight
+
     // get plane defined by vertices
     Eigen::Hyperplane<float, 3> eigen_plane =
       Eigen::Hyperplane<float, 3>::Through (a.getArray3fMap (),
@@ -449,7 +463,7 @@ iterate (ConstCloudPtr &original, ConstCloudPtr &input, Cloud &output, float max
 
       // these should be identical, but they aren't in practice, but why
       //if (dist < dist_thresh && angles[0] < angle_thresh && angles[1] < angle_thresh && angles[2] < angle_thresh)
-      if (dist < dist_thresh && angles.maxCoeff () < angle_thresh)
+      if (dist < dist_thresh && angles.maxCoeff () < (angle_thresh*weight))
       {
         addtoground->indices.push_back (hidx[i]);
         /*
