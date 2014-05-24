@@ -40,7 +40,9 @@
 
 #include <boost/accumulators/accumulators.hpp>
 #include <boost/accumulators/statistics/stats.hpp>
+#include <boost/accumulators/statistics/max.hpp>
 #include <boost/accumulators/statistics/median.hpp>
+#include <boost/accumulators/statistics/min.hpp>
 
 #include <Eigen/Geometry>
 
@@ -49,6 +51,7 @@
 #include <pcl/io/pcd_io.h>
 #include <pcl/common/common.h>
 #include <pcl/common/angles.h>
+#include <pcl/common/distances.h>
 #include <pcl/console/print.h>
 #include <pcl/console/parse.h>
 #include <pcl/console/time.h>
@@ -63,7 +66,7 @@ using namespace std;
 using namespace pcl;
 using namespace pcl::io;
 using namespace pcl::console;
-using namespace boost::accumulators;
+namespace ba = boost::accumulators;
 
 typedef PointXYZ PointType;
 typedef PointCloud<PointXYZ> Cloud;
@@ -299,7 +302,7 @@ iterate (ConstCloudPtr &original, ConstCloudPtr &input, Cloud &output, float max
 
   std::cerr << "Triangulation composed of " << triangles.polygons.size () << " triangles" << std::endl;
 
-  accumulator_set<float, stats<tag::median (with_p_square_quantile) > > dist_acc, angle_acc;
+  ba::accumulator_set<float, ba::stats<ba::tag::median (ba::with_p_square_quantile), ba::tag::min, ba::tag::max > > dist_acc, angle_acc, edge_acc;
 
   for (int t = 0; t < triangles.polygons.size (); ++t)
   {
@@ -318,6 +321,10 @@ iterate (ConstCloudPtr &original, ConstCloudPtr &input, Cloud &output, float max
     PointXYZ a = tri_cloud->points[triangles.polygons[t].vertices[0]];
     PointXYZ b = tri_cloud->points[triangles.polygons[t].vertices[1]];
     PointXYZ c = tri_cloud->points[triangles.polygons[t].vertices[2]];
+
+    edge_acc(euclideanDistance(a,b)); 
+    edge_acc(euclideanDistance(b,c)); 
+    edge_acc(euclideanDistance(c,a)); 
 
     // get plane defined by vertices
     Eigen::Hyperplane<float, 3> eigen_plane =
@@ -365,18 +372,21 @@ iterate (ConstCloudPtr &original, ConstCloudPtr &input, Cloud &output, float max
 
   if (adapt)
   {
-    if (!pcl_isnan (median (dist_acc)))
-      dist_thresh = median (dist_acc);
+    if (!pcl_isnan (ba::median (dist_acc)))
+      dist_thresh = ba::median (dist_acc);
 
-    if (!pcl_isnan (median (angle_acc)))
-      angle_thresh = median (angle_acc);
+    if (!pcl_isnan (ba::median (angle_acc)))
+      angle_thresh = ba::median (angle_acc);
 
     if (dist_thresh > max_dist_thresh) dist_thresh = max_dist_thresh;
     if (angle_thresh > max_angle_thresh) angle_thresh = max_angle_thresh;
   }
 
-  std::cerr << "Distance threshold set at " << dist_thresh << " (median was " << median (dist_acc) << ")" << std::endl;
-  std::cerr << "Angle threshold set at " << rad2deg (angle_thresh) << " (median was " << rad2deg (median (angle_acc)) << ")" << std::endl;
+  //std::cerr << "Distance threshold set at " << dist_thresh << " (median was " << median (dist_acc) << ")" << std::endl;
+  printf("Distance threshold at %.2f (%.2f, %.2f, %.2f)\n", dist_thresh, (ba::min)(dist_acc), ba::median(dist_acc), (ba::max)(dist_acc));
+  //std::cerr << "Angle threshold set at " << rad2deg (angle_thresh) << " (median was " << rad2deg (median (angle_acc)) << ")" << std::endl;
+  printf("Angle threshold at %.2f (%.2f, %.2f, %.2f)\n", rad2deg(angle_thresh), rad2deg((ba::min)(angle_acc)), rad2deg(ba::median(angle_acc)), rad2deg((ba::max)(angle_acc)));
+  printf("Edge lengths (%.2f, %.2f, %.2f)\n", (ba::min)(edge_acc), ba::median(edge_acc), (ba::max)(edge_acc));
 
 
 
@@ -511,9 +521,9 @@ compute (ConstCloudPtr &input, Cloud &output, float resolution, float dist_thres
   {
     std::cerr << "Densification starts with " << cloud->points.size () << " out of " << input->points.size () << " points." << std::endl;
     if (i == 0)
-      iterate (input, cloud, *cloud_f, dist_thresh, angle_thresh, false);
+      iterate (input, cloud, *cloud_f, dist_thresh, 40*M_PI/180, false);
     else
-      iterate (input, cloud, *cloud_f, dist_thresh, angle_thresh, true);
+      iterate (input, cloud, *cloud_f, dist_thresh, 6*M_PI/180, true);
     int new_pts = cloud_f->points.size () - cloud->points.size ();
 
     std::cerr << "Iteration " << i << " added " << new_pts << " points." << std::endl;
