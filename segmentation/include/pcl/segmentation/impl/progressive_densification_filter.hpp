@@ -52,7 +52,6 @@
 #include <pcl/PCLPointCloud2.h>
 #include <pcl/point_cloud.h>
 #include <pcl/point_types.h>
-//#include <pcl/io/pcd_io.h>
 #include <pcl/common/common.h>
 #include <pcl/common/angles.h>
 #include <pcl/common/distances.h>
@@ -221,13 +220,9 @@ pcl::ProgressiveDensificationFilter<PointT>::densify (const typename pcl::PointC
     if (angle_thresh > max_angle_thresh) angle_thresh = max_angle_thresh;
   }
 
-  //std::cerr << "Distance threshold set at " << dist_thresh << " (median was " << median (dist_acc) << ")" << std::endl;
-  printf("Distance threshold at %.2f (%.2f, %.2f, %.2f)\n", dist_thresh, (ba::min)(dist_acc), ba::median(dist_acc), (ba::max)(dist_acc));
-  //std::cerr << "Angle threshold set at " << rad2deg (angle_thresh) << " (median was " << rad2deg (median (angle_acc)) << ")" << std::endl;
-  printf("Angle threshold at %.2f (%.2f, %.2f, %.2f)\n", rad2deg(angle_thresh), rad2deg((ba::min)(angle_acc)), rad2deg(ba::median(angle_acc)), rad2deg((ba::max)(angle_acc)));
-  printf("Edge lengths (%.2f, %.2f, %.2f)\n", (ba::min)(edge_acc), ba::median(edge_acc), (ba::max)(edge_acc));
-
-
+  PCL_DEBUG ("Distance threshold at %.2f (%.2f, %.2f, %.2f)\n", dist_thresh, (ba::min)(dist_acc), ba::median(dist_acc), (ba::max)(dist_acc));
+  PCL_DEBUG ("Angle threshold at %.2f (%.2f, %.2f, %.2f)\n", rad2deg(angle_thresh), rad2deg((ba::min)(angle_acc)), rad2deg(ba::median(angle_acc)), rad2deg((ba::max)(angle_acc)));
+  PCL_DEBUG ("Edge lengths (%.2f, %.2f, %.2f)\n", (ba::min)(edge_acc), ba::median(edge_acc), (ba::max)(edge_acc));
 
   PointIndicesPtr addtoground (new PointIndices);
   addtoground->indices = ground;
@@ -345,12 +340,6 @@ pcl::ProgressiveDensificationFilter<PointT>::densify (const typename pcl::PointC
 //      addtoground->indices.push_back (bestidx);
   }
 
-//  ExtractIndices<PointT> extract;
-//  typename pcl::PointCloud<PointT>::Ptr ground (new pcl::PointCloud<PointT>);
-//  extract.setInputCloud (original);
-//  extract.setIndices (addtoground);
-//  extract.filter (output);
-//  output += *input;
   ground = addtoground->indices;
 }
 
@@ -373,35 +362,12 @@ pcl::ProgressiveDensificationFilter<PointT>::extract (std::vector<int>& ground)
   typename pcl::PointCloud<PointT>::Ptr cloud_in (new pcl::PointCloud<PointT>);
   pcl::copyPointCloud<PointT> (*input_, ground, *cloud_in);
 
-  /*
-  // Create new cloud to hold the filtered results. Apply the morphological
-  // opening operation at the current window size.
-  typename pcl::PointCloud<PointT>::Ptr cloud_f (new pcl::PointCloud<PointT>);
-
-  // Find indices of the points whose difference between the source and
-  // filtered point clouds is less than the current height threshold.
-  std::vector<int> pt_indices;
-  for (boost::int32_t p_idx = 0; p_idx < ground.size (); ++p_idx)
-  {
-    float diff = cloud->points[p_idx].z - cloud_f->points[p_idx].z;
-    if (diff < height_thresholds[i])
-      pt_indices.push_back (ground[p_idx]);
-  }
-
-  // Ground is now limited to pt_indices
-  ground.swap (pt_indices);
-  */
-
   // start by finding grid minimums (user variable res, larger than buildings)
   typename pcl::PointCloud<PointT>::Ptr cloud_mins (new pcl::PointCloud<PointT>);
   GridMinimum<PointT> gm (resolution_);
   gm.setInputCloud (cloud_in);
-  //gm.filter (*cloud_mins);
   gm.filter (ground);
 
-  //typename pcl::PointCloud<PointT>::Ptr cloud (new pcl::PointCloud<PointT>);
-  //typename pcl::PointCloud<PointT>::Ptr cloud_f (new pcl::PointCloud<PointT>);
-  //cloud = cloud_mins;
   for (int i = 0; i < max_iters_; ++i)
   {
     int prev_points = ground.size ();
@@ -415,11 +381,9 @@ pcl::ProgressiveDensificationFilter<PointT>::extract (std::vector<int>& ground)
     PCL_DEBUG ("Iteration %d added %d points.\n", i, new_pts);
     PCL_DEBUG ("Ground now has %d points.\n", ground.size ());
 
-    //cloud.swap (cloud_f);
     if (new_pts == 0)
       break;
   }
-  //output = *cloud;
 
   deinitCompute ();
 }

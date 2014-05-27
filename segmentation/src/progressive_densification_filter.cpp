@@ -44,10 +44,5 @@
 #include <pcl/segmentation/progressive_densification_filter.h>
 #include <pcl/segmentation/impl/progressive_densification_filter.hpp>
 
-// Instantiations of specific point types
-//#ifdef PCL_ONLY_CORE_POINT_TYPES
-  PCL_INSTANTIATE(ProgressiveDensificationFilter, (pcl::PointXYZ))
-//#else
-//  PCL_INSTANTIATE(ProgressiveDensificationFilter, PCL_XYZ_POINT_TYPES)
-//#endif
+PCL_INSTANTIATE(ProgressiveDensificationFilter, (pcl::PointXYZ))
 
