@@ -38,38 +38,39 @@
  * $Id$
  */
 
-#include <boost/accumulators/accumulators.hpp>
-#include <boost/accumulators/statistics/stats.hpp>
-#include <boost/accumulators/statistics/max.hpp>
-#include <boost/accumulators/statistics/median.hpp>
-#include <boost/accumulators/statistics/min.hpp>
+//#include <boost/accumulators/accumulators.hpp>
+//#include <boost/accumulators/statistics/stats.hpp>
+//#include <boost/accumulators/statistics/max.hpp>
+//#include <boost/accumulators/statistics/median.hpp>
+//#include <boost/accumulators/statistics/min.hpp>
 
-#include <Eigen/Geometry>
+//#include <Eigen/Geometry>
 
-#include <pcl/PCLPointCloud2.h>
+//#include <pcl/PCLPointCloud2.h>
 #include <pcl/point_types.h>
 #include <pcl/io/pcd_io.h>
-#include <pcl/common/common.h>
+//#include <pcl/common/common.h>
 #include <pcl/common/angles.h>
-#include <pcl/common/distances.h>
+//#include <pcl/common/distances.h>
 #include <pcl/console/print.h>
 #include <pcl/console/parse.h>
 #include <pcl/console/time.h>
-#include <pcl/features/normal_3d.h>
-#include <pcl/filters/crop_hull.h>
+//#include <pcl/features/normal_3d.h>
+//#include <pcl/filters/crop_hull.h>
 #include <pcl/filters/extract_indices.h>
-#include <pcl/filters/grid_minimum.h>
-#include <pcl/kdtree/kdtree_flann.h>
-#include <pcl/surface/gp3.h>
+//#include <pcl/filters/grid_minimum.h>
+//#include <pcl/kdtree/kdtree_flann.h>
+#include <pcl/segmentation/progressive_densification_filter.h>
+//#include <pcl/surface/gp3.h>
 
 using namespace std;
 using namespace pcl;
 using namespace pcl::io;
 using namespace pcl::console;
-namespace ba = boost::accumulators;
+//namespace ba = boost::accumulators;
 
 typedef PointXYZ PointType;
-typedef PointCloud<PointXYZ> Cloud;
+typedef PointCloud<PointType> Cloud;
 typedef Cloud::Ptr CloudPtr;
 typedef const Cloud::ConstPtr ConstCloudPtr;
 
@@ -104,7 +105,7 @@ printHelp (int, char **argv)
 }
 
 bool
-loadCloud (const std::string &filename, Cloud &cloud)
+loadCloud (const string &filename, Cloud &cloud)
 {
   TicToc tt;
   print_highlight ("Loading ");
@@ -125,7 +126,7 @@ loadCloud (const std::string &filename, Cloud &cloud)
 }
 
 void
-saveCloud (const std::string &filename, const Cloud &output)
+saveCloud (const string &filename, const Cloud &output)
 {
   TicToc tt;
   tt.tic ();
@@ -148,9 +149,9 @@ void
 getInitialParams (ConstCloudPtr &original, ConstCloudPtr &input)
 {
   // Normal estimation*
-  NormalEstimation<PointXYZ, Normal> n;
+  NormalEstimation<PointType, Normal> n;
   PointCloud<Normal>::Ptr normals (new PointCloud<Normal>);
-  search::KdTree<PointXYZ>::Ptr tree (new search::KdTree<PointXYZ>);
+  search::KdTree<PointType>::Ptr tree (new search::KdTree<PointType>);
   tree->setInputCloud (input);
   n.setInputCloud (input);
   n.setSearchMethod (tree);
@@ -196,20 +197,20 @@ getInitialParams (ConstCloudPtr &original, ConstCloudPtr &input)
   for (int t = 0; t < triangles.polygons.size (); ++t)
   {
     // cropping input cloud to only those points within the first triangle
-    CropHull<PointXYZ> ch;
+    CropHull<PointType> ch;
     ch.setInputCloud (original);
     ch.setHullCloud (tri_cloud);
     ch.setDim (2);
-    std::vector<Vertices> first_triangle;
+    vector<Vertices> first_triangle;
     first_triangle.push_back (triangles.polygons[t]);
     ch.setHullIndices (first_triangle);
-    std::vector<int> hidx;
+    vector<int> hidx;
     ch.filter (hidx);
 
     // getting vertices of first triangle
-    PointXYZ a = tri_cloud->points[triangles.polygons[t].vertices[0]];
-    PointXYZ b = tri_cloud->points[triangles.polygons[t].vertices[1]];
-    PointXYZ c = tri_cloud->points[triangles.polygons[t].vertices[2]];
+    PointType a = tri_cloud->points[triangles.polygons[t].vertices[0]];
+    PointType b = tri_cloud->points[triangles.polygons[t].vertices[1]];
+    PointType c = tri_cloud->points[triangles.polygons[t].vertices[2]];
 
     // get plane defined by vertices
     Eigen::Hyperplane<float, 3> eigen_plane =
@@ -246,17 +247,18 @@ getInitialParams (ConstCloudPtr &original, ConstCloudPtr &input)
       angle_acc(angles[2]);
     }
   }
-  std::cerr << median(dist_acc) << ", " << median(angle_acc)*180/M_PI << std::endl;
+  cerr << median(dist_acc) << ", " << median(angle_acc)*180/M_PI << endl;
 }
 */
 
+/*
 void
 iterate (ConstCloudPtr &original, ConstCloudPtr &input, Cloud &output, float max_dist_thresh, float max_angle_thresh, bool adapt=false)
 {
   // Normal estimation*
-  NormalEstimation<PointXYZ, Normal> n;
+  NormalEstimation<PointType, Normal> n;
   PointCloud<Normal>::Ptr normals (new PointCloud<Normal>);
-  search::KdTree<PointXYZ>::Ptr tree (new search::KdTree<PointXYZ>);
+  search::KdTree<PointType>::Ptr tree (new search::KdTree<PointType>);
   tree->setInputCloud (input);
   n.setInputCloud (input);
   n.setSearchMethod (tree);
@@ -289,7 +291,7 @@ iterate (ConstCloudPtr &original, ConstCloudPtr &input, Cloud &output, float max
   gp3.setNormalConsistency (false);
 
   // Get result
-  std::cerr << "Points into triangulation " << cloud_with_normals->points.size () << std::endl;
+  cerr << "Points into triangulation " << cloud_with_normals->points.size () << endl;
   gp3.setInputCloud (cloud_with_normals);
   gp3.setSearchMethod (tree2);
   gp3.reconstruct (triangles);
@@ -300,27 +302,27 @@ iterate (ConstCloudPtr &original, ConstCloudPtr &input, Cloud &output, float max
 
   float m_pi_over_two = M_PI * 0.5f;
 
-  std::cerr << "Triangulation composed of " << triangles.polygons.size () << " triangles" << std::endl;
+  cerr << "Triangulation composed of " << triangles.polygons.size () << " triangles" << endl;
 
   ba::accumulator_set<float, ba::stats<ba::tag::median (ba::with_p_square_quantile), ba::tag::min, ba::tag::max > > dist_acc, angle_acc, edge_acc;
 
   for (int t = 0; t < triangles.polygons.size (); ++t)
   {
     // cropping input cloud to only those points within the first triangle
-    CropHull<PointXYZ> ch;
+    CropHull<PointType> ch;
     ch.setInputCloud (original);
     ch.setHullCloud (tri_cloud);
     ch.setDim (2);
-    std::vector<Vertices> first_triangle;
+    vector<Vertices> first_triangle;
     first_triangle.push_back (triangles.polygons[t]);
     ch.setHullIndices (first_triangle);
-    std::vector<int> hidx;
+    vector<int> hidx;
     ch.filter (hidx);
 
     // getting vertices of first triangle
-    PointXYZ a = tri_cloud->points[triangles.polygons[t].vertices[0]];
-    PointXYZ b = tri_cloud->points[triangles.polygons[t].vertices[1]];
-    PointXYZ c = tri_cloud->points[triangles.polygons[t].vertices[2]];
+    PointType a = tri_cloud->points[triangles.polygons[t].vertices[0]];
+    PointType b = tri_cloud->points[triangles.polygons[t].vertices[1]];
+    PointType c = tri_cloud->points[triangles.polygons[t].vertices[2]];
 
     edge_acc(euclideanDistance(a,b)); 
     edge_acc(euclideanDistance(b,c)); 
@@ -382,9 +384,9 @@ iterate (ConstCloudPtr &original, ConstCloudPtr &input, Cloud &output, float max
     if (angle_thresh > max_angle_thresh) angle_thresh = max_angle_thresh;
   }
 
-  //std::cerr << "Distance threshold set at " << dist_thresh << " (median was " << median (dist_acc) << ")" << std::endl;
+  //cerr << "Distance threshold set at " << dist_thresh << " (median was " << median (dist_acc) << ")" << endl;
   printf("Distance threshold at %.2f (%.2f, %.2f, %.2f)\n", dist_thresh, (ba::min)(dist_acc), ba::median(dist_acc), (ba::max)(dist_acc));
-  //std::cerr << "Angle threshold set at " << rad2deg (angle_thresh) << " (median was " << rad2deg (median (angle_acc)) << ")" << std::endl;
+  //cerr << "Angle threshold set at " << rad2deg (angle_thresh) << " (median was " << rad2deg (median (angle_acc)) << ")" << endl;
   printf("Angle threshold at %.2f (%.2f, %.2f, %.2f)\n", rad2deg(angle_thresh), rad2deg((ba::min)(angle_acc)), rad2deg(ba::median(angle_acc)), rad2deg((ba::max)(angle_acc)));
   printf("Edge lengths (%.2f, %.2f, %.2f)\n", (ba::min)(edge_acc), ba::median(edge_acc), (ba::max)(edge_acc));
 
@@ -395,20 +397,20 @@ iterate (ConstCloudPtr &original, ConstCloudPtr &input, Cloud &output, float max
   for (int t = 0; t < triangles.polygons.size (); ++t)
   {
     // cropping input cloud to only those points within the first triangle
-    CropHull<PointXYZ> ch;
+    CropHull<PointType> ch;
     ch.setInputCloud (original);
     ch.setHullCloud (tri_cloud);
     ch.setDim (2);
-    std::vector<Vertices> first_triangle;
+    vector<Vertices> first_triangle;
     first_triangle.push_back (triangles.polygons[t]);
     ch.setHullIndices (first_triangle);
-    std::vector<int> hidx;
+    vector<int> hidx;
     ch.filter (hidx);
 
     // getting vertices of first triangle
-    PointXYZ a = tri_cloud->points[triangles.polygons[t].vertices[0]];
-    PointXYZ b = tri_cloud->points[triangles.polygons[t].vertices[1]];
-    PointXYZ c = tri_cloud->points[triangles.polygons[t].vertices[2]];
+    PointType a = tri_cloud->points[triangles.polygons[t].vertices[0]];
+    PointType b = tri_cloud->points[triangles.polygons[t].vertices[1]];
+    PointType c = tri_cloud->points[triangles.polygons[t].vertices[2]];
 
     Eigen::Vector3f edges;
     edges[0] = euclideanDistance(a,b);
@@ -444,8 +446,8 @@ iterate (ConstCloudPtr &original, ConstCloudPtr &input, Cloud &output, float max
     Eigen::Vector4f cc = c.getArray4fMap ();
 
     bool newpoint = false;
-    float bestdist = std::numeric_limits<float>::max ();
-    float bestangle = std::numeric_limits<float>::max ();
+    float bestdist = numeric_limits<float>::max ();
+    float bestangle = numeric_limits<float>::max ();
     int bestidx = 0;
     for (int i = 0; i < hidx.size (); ++i)
     {
@@ -466,52 +468,49 @@ iterate (ConstCloudPtr &original, ConstCloudPtr &input, Cloud &output, float max
       if (dist < dist_thresh && angles.maxCoeff () < (angle_thresh*weight))
       {
         addtoground->indices.push_back (hidx[i]);
-        /*
-        if (dist < bestdist && angles.maxCoeff() < bestangle)
-        {
-          newpoint = true;
-          bestdist = dist;
-          bestangle = angles.maxCoeff();
-          bestidx = hidx[i];
-        }
-        */
+//        if (dist < bestdist && angles.maxCoeff() < bestangle)
+//        {
+//          newpoint = true;
+//          bestdist = dist;
+//          bestangle = angles.maxCoeff();
+//          bestidx = hidx[i];
+//        }
       }
       else
       {
-        /*
-        // check mirror point
-        float da = (p4-aa).norm ();
-        float db = (p4-bb).norm ();
-        float dc = (p4-cc).norm ();
-        if (da < db && da < dc)
-        {
-          // closest to vertex a
-          // find the mirror point
-          // find the triangle it belongs to
-          // find that triangle's normal
-          // compute distance to triangle
-          // compute angles to vertices
-        }
-        else if (db < da && db < dc)
-        {
-        }
-        else if (dc < da && dc < db)
-        {
-        }
-        */
+//        // check mirror point
+//        float da = (p4-aa).norm ();
+//        float db = (p4-bb).norm ();
+//        float dc = (p4-cc).norm ();
+//        if (da < db && da < dc)
+//        {
+//          // closest to vertex a
+//          // find the mirror point
+//          // find the triangle it belongs to
+//          // find that triangle's normal
+//          // compute distance to triangle
+//          // compute angles to vertices
+//        }
+//        else if (db < da && db < dc)
+//        {
+//        }
+//        else if (dc < da && dc < db)
+//        {
+//        }
       }
     }
 //    if (newpoint)
 //      addtoground->indices.push_back (bestidx);
   }
 
-  ExtractIndices<PointXYZ> extract;
+  ExtractIndices<PointType> extract;
   CloudPtr ground (new Cloud);
   extract.setInputCloud (original);
   extract.setIndices (addtoground);
   extract.filter (output);
   output += *input;
 }
+*/
 
 void
 compute (ConstCloudPtr &input, Cloud &output, float resolution, float dist_thresh, float angle_thresh, int max_iters)
@@ -522,9 +521,26 @@ compute (ConstCloudPtr &input, Cloud &output, float resolution, float dist_thres
 
   print_highlight (stderr, "Computing \n");
 
+  PointIndicesPtr ground (new PointIndices);
+
+  ProgressiveDensificationFilter<PointType> pdf;
+  pdf.setInputCloud (input);
+  pdf.setResolution (resolution);
+  pdf.setDistThresh (dist_thresh);
+  pdf.setAngleThresh (angle_thresh);
+  pdf.setMaxIterations (max_iters);
+  pdf.extract (ground->indices);
+
+  ExtractIndices<PointType> extract;
+  extract.setInputCloud (input);
+  extract.setIndices (ground);
+  extract.setNegative (false);
+  extract.filter (output);
+
+  /*
   // start by finding grid minimums (user variable res, larger than buildings)
   CloudPtr cloud_mins (new Cloud);
-  GridMinimum<PointXYZ> gm (resolution);
+  GridMinimum<PointType> gm (resolution);
   gm.setInputCloud (input);
   gm.filter (*cloud_mins);
 
@@ -533,21 +549,22 @@ compute (ConstCloudPtr &input, Cloud &output, float resolution, float dist_thres
   cloud = cloud_mins;
   for (int i = 0; i < max_iters; ++i)
   {
-    std::cerr << "Densification starts with " << cloud->points.size () << " out of " << input->points.size () << " points." << std::endl;
+    cerr << "Densification starts with " << cloud->points.size () << " out of " << input->points.size () << " points." << endl;
     if (i == 0)
       iterate (input, cloud, *cloud_f, dist_thresh, 40*M_PI/180, false);
     else
       iterate (input, cloud, *cloud_f, dist_thresh, 6*M_PI/180, true);
     int new_pts = cloud_f->points.size () - cloud->points.size ();
 
-    std::cerr << "Iteration " << i << " added " << new_pts << " points." << std::endl;
-    std::cerr << "Ground now has " << cloud_f->points.size () << " points." << std::endl;
+    cerr << "Iteration " << i << " added " << new_pts << " points." << endl;
+    cerr << "Ground now has " << cloud_f->points.size () << " points." << endl;
 
     cloud.swap (cloud_f);
     if (new_pts == 0)
       break;
   }
   output = *cloud;
+  */
 
   print_info ("[done, ");
   print_value ("%g", tt.toc ());
@@ -658,7 +675,7 @@ main (int argc, char** argv)
   if (!batch_mode)
   {
     // Parse the command line arguments for .pcd files
-    std::vector<int> p_file_indices;
+    vector<int> p_file_indices;
     p_file_indices = parse_file_extension_argument (argc, argv, ".pcd");
     if (p_file_indices.size () != 2)
     {
