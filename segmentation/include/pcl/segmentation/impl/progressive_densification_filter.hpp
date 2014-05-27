@@ -127,7 +127,6 @@ pcl::ProgressiveDensificationFilter<PointT>::densify (const typename pcl::PointC
   gp3.setNormalConsistency (false);
 
   // Get result
-  std::cerr << "Points into triangulation " << cloud_with_normals->points.size () << std::endl;
   gp3.setInputCloud (cloud_with_normals);
   gp3.setSearchMethod (tree2);
   gp3.reconstruct (triangles);
@@ -137,8 +136,6 @@ pcl::ProgressiveDensificationFilter<PointT>::densify (const typename pcl::PointC
   fromPCLPointCloud2 (triangles.cloud, *tri_cloud);
 
   float m_pi_over_two = M_PI * 0.5f;
-
-  std::cerr << "Triangulation composed of " << triangles.polygons.size () << " triangles" << std::endl;
 
   ba::accumulator_set<float, ba::stats<ba::tag::median (ba::with_p_square_quantile), ba::tag::min, ba::tag::max > > dist_acc, angle_acc, edge_acc;
 
@@ -220,9 +217,9 @@ pcl::ProgressiveDensificationFilter<PointT>::densify (const typename pcl::PointC
     if (angle_thresh > max_angle_thresh) angle_thresh = max_angle_thresh;
   }
 
-  PCL_DEBUG ("Distance threshold at %.2f (%.2f, %.2f, %.2f)\n", dist_thresh, (ba::min) (dist_acc), ba::median (dist_acc), (ba::max) (dist_acc));
-  PCL_DEBUG ("Angle threshold at %.2f (%.2f, %.2f, %.2f)\n", rad2deg (angle_thresh), rad2deg ((ba::min) (angle_acc)), rad2deg (ba::median (angle_acc)), rad2deg ((ba::max) (angle_acc)));
-  PCL_DEBUG ("Edge lengths (%.2f, %.2f, %.2f)\n", (ba::min) (edge_acc), ba::median (edge_acc), (ba::max) (edge_acc));
+  PCL_DEBUG ("Distance threshold: %.2f (min/median/max = %.2f/%.2f/%.2f)\n", dist_thresh, (ba::min) (dist_acc), ba::median (dist_acc), (ba::max) (dist_acc));
+  PCL_DEBUG ("Angle threshold: %.2f (min/median/max = %.2f/%.2f/%.2f)\n", rad2deg (angle_thresh), rad2deg ((ba::min) (angle_acc)), rad2deg (ba::median (angle_acc)), rad2deg ((ba::max) (angle_acc)));
+  PCL_DEBUG ("Edge lengths (min/median/max = %.2f/%.2f/%.2f)\n", (ba::min) (edge_acc), ba::median (edge_acc), (ba::max) (edge_acc));
 
   PointIndicesPtr addtoground (new PointIndices);
   addtoground->indices = ground;
@@ -282,6 +279,7 @@ pcl::ProgressiveDensificationFilter<PointT>::densify (const typename pcl::PointC
 //    float bestdist = std::numeric_limits<float>::max ();
 //    float bestangle = std::numeric_limits<float>::max ();
 //    int bestidx = 0;
+    int potential_mirror_pts = 0;
     for (int i = 0; i < hidx.size (); ++i)
     {
       Eigen::Vector3f angles;
@@ -313,6 +311,7 @@ pcl::ProgressiveDensificationFilter<PointT>::densify (const typename pcl::PointC
       }
       else
       {
+        potential_mirror_pts++;
         /*
         // check mirror point
         float da = (p4-aa).norm ();
@@ -336,6 +335,7 @@ pcl::ProgressiveDensificationFilter<PointT>::densify (const typename pcl::PointC
         */
       }
     }
+    PCL_DEBUG ("Triangle %d has %d potential mirror points.\n", t, potential_mirror_pts);
 //    if (newpoint)
 //      addtoground->indices.push_back (bestidx);
   }
@@ -371,15 +371,14 @@ pcl::ProgressiveDensificationFilter<PointT>::extract (std::vector<int>& ground)
   for (int i = 0; i < max_iters_; ++i)
   {
     int prev_points = ground.size ();
-    PCL_DEBUG ("Densification starts with %d out of %d points.\n", prev_points, cloud_in->points.size ());
+    PCL_DEBUG ("Densification starts with %d out of %d points labeled as ground (%.2f%%).\n", prev_points, cloud_in->points.size (), 100.0f*static_cast<float> (prev_points)/static_cast<float> (cloud_in->points.size ()));
     if (i == 0)
       densify (cloud_in, ground, dist_thresh_, angle_thresh_, false); // should this be larger for the first iteration, e.g., 40deg?
     else
       densify (cloud_in, ground, dist_thresh_, angle_thresh_, true);
     int new_pts = ground.size () - prev_points;
 
-    PCL_DEBUG ("Iteration %d added %d points.\n", i, new_pts);
-    PCL_DEBUG ("Ground now has %d points.\n", ground.size ());
+    PCL_DEBUG ("Iteration %d added %d points.\n", i+1, new_pts);
 
     if (new_pts == 0)
       break;
