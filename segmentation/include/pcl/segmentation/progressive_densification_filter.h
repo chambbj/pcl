@@ -46,89 +46,113 @@
 
 namespace pcl
 {
-  /** \brief
-    * Implements the Progressive Densification Filter for segmentation of ground points.
-    * Description can be found in the article
-    * "DEM generation from laser scanner data using adaptive TIN models" by P.
-    * Axelsson.
-    */
-  template <typename PointT>
-  class PCL_EXPORTS ProgressiveDensificationFilter : public pcl::PCLBase<PointT>
+/** \brief
+  * Implements the Progressive Densification Filter for segmentation of ground points.
+  * Description can be found in the article
+  * "DEM generation from laser scanner data using adaptive TIN models" by P.
+  * Axelsson.
+  */
+template <typename PointT>
+class PCL_EXPORTS ProgressiveDensificationFilter : public pcl::PCLBase<PointT>
+{
+public:
+
+  typedef pcl::PointCloud <PointT> PointCloud;
+
+  using PCLBase <PointT>::input_;
+  using PCLBase <PointT>::indices_;
+  using PCLBase <PointT>::initCompute;
+  using PCLBase <PointT>::deinitCompute;
+
+public:
+
+  /** \brief Constructor that sets default values for member variables. */
+  ProgressiveDensificationFilter ();
+
+  virtual
+  ~ProgressiveDensificationFilter ();
+
+  /** \brief Get the resolution to be used in filtering ground returns. */
+  inline float
+  getResolution () const
   {
-    public:
+    return (resolution_);
+  }
 
-      typedef pcl::PointCloud <PointT> PointCloud;
+  /** \brief Set the resolution to be used in filtering ground returns. */
+  inline void
+  setResolution (float resolution)
+  {
+    resolution_ = resolution;
+  }
 
-      using PCLBase <PointT>::input_;
-      using PCLBase <PointT>::indices_;
-      using PCLBase <PointT>::initCompute;
-      using PCLBase <PointT>::deinitCompute;
+  /** \brief Get the distance to TIN facet threshold. */
+  inline float
+  getDistThresh () const
+  {
+    return (dist_thresh_);
+  }
 
-    public:
+  /** \brief Set the distance to TIN facet threshold. */
+  inline void
+  setDistThresh (float dist_thresh)
+  {
+    dist_thresh_ = dist_thresh;
+  }
 
-      /** \brief Constructor that sets default values for member variables. */
-      ProgressiveDensificationFilter ();
+  /** \brief Get the angle to vertex threshold. */
+  inline float
+  getAngleThresh () const
+  {
+    return (angle_thresh_);
+  }
 
-      virtual
-      ~ProgressiveDensificationFilter ();
+  /** \brief Set the angle to vertex threshold. */
+  inline void
+  setAngleThresh (float angle_thresh)
+  {
+    angle_thresh_ = angle_thresh;
+  }
 
-      /** \brief Get the resolution to be used in filtering ground returns. */
-      inline float
-      getResolution () const { return (resolution_); }
+  /** \brief Get the maximum number of iterations. */
+  inline int
+  getMaxIterations () const
+  {
+    return (max_iters_);
+  }
 
-      /** \brief Set the resolution to be used in filtering ground returns. */
-      inline void
-      setResolution (float resolution) { resolution_ = resolution; }
+  /** \brief Set the maximum number of iterations. */
+  inline void
+  setMaxIterations (int max_iters)
+  {
+    max_iters_ = max_iters;
+  }
 
-      /** \brief Get the distance to TIN facet threshold. */
-      inline float
-      getDistThresh () const { return (dist_thresh_); }
+  /** \brief This method launches the segmentation algorithm and returns indices of
+    * points determined to be ground returns.
+    * \param[out] ground indices of points determined to be ground returns.
+    */
+  virtual void
+  extract (std::vector<int>& ground);
 
-      /** \brief Set the distance to TIN facet threshold. */
-      inline void
-      setDistThresh (float dist_thresh) { dist_thresh_ = dist_thresh; }
+protected:
 
-      /** \brief Get the angle to vertex threshold. */
-      inline float
-      getAngleThresh () const { return (angle_thresh_); }
-      
-      /** \brief Set the angle to vertex threshold. */
-      inline void
-      setAngleThresh (float angle_thresh) { angle_thresh_ = angle_thresh; }
+  /** \brief Resolution to be used in filtering ground returns. */
+  float resolution_;
 
-      /** \brief Get the maximum number of iterations. */
-      inline int
-      getMaxIterations () const { return (max_iters_); }
+  /** \brief Distance to TIN facet threshold. */
+  float dist_thresh_;
 
-      /** \brief Set the maximum number of iterations. */
-      inline void
-      setMaxIterations (int max_iters) { max_iters_ = max_iters; }
+  /** \brief Angle to vertex threshold. */
+  float angle_thresh_;
 
-      /** \brief This method launches the segmentation algorithm and returns indices of
-        * points determined to be ground returns.
-        * \param[out] ground indices of points determined to be ground returns.
-        */
-      virtual void
-      extract (std::vector<int>& ground);
+  /** \brief Maximum number of iterations. */
+  int max_iters_;
 
-    protected:
-
-      /** \brief Resolution to be used in filtering ground returns. */
-      float resolution_;
-
-      /** \brief Distance to TIN facet threshold. */
-      float dist_thresh_;
-
-      /** \brief Angle to vertex threshold. */
-      float angle_thresh_;
-
-      /** \brief Maximum number of iterations. */
-      int max_iters_;
-
-    private:
-      virtual void
-      densify (const typename pcl::PointCloud<PointT>::ConstPtr &original, std::vector<int> &ground, float max_dist_thresh, float max_angle_thresh, bool adapt=false);
-  };
+private:
+  virtual void
+  densify (const typename pcl::PointCloud<PointT>::ConstPtr &original, std::vector<int> &ground, float max_dist_thresh, float max_angle_thresh, bool adapt=false);
+};
 }
 
 #ifdef PCL_NO_PRECOMPILE

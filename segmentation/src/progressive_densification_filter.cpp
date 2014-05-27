@@ -44,5 +44,5 @@
 #include <pcl/segmentation/progressive_densification_filter.h>
 #include <pcl/segmentation/impl/progressive_densification_filter.hpp>
 
-PCL_INSTANTIATE(ProgressiveDensificationFilter, (pcl::PointXYZ))
+PCL_INSTANTIATE (ProgressiveDensificationFilter, (pcl::PointXYZ))
 

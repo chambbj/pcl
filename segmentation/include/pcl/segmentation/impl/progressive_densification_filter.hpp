@@ -160,9 +160,9 @@ pcl::ProgressiveDensificationFilter<PointT>::densify (const typename pcl::PointC
     PointT b = tri_cloud->points[triangles.polygons[t].vertices[1]];
     PointT c = tri_cloud->points[triangles.polygons[t].vertices[2]];
 
-    edge_acc(euclideanDistance(a,b)); 
-    edge_acc(euclideanDistance(b,c)); 
-    edge_acc(euclideanDistance(c,a)); 
+    edge_acc (euclideanDistance (a,b));
+    edge_acc (euclideanDistance (b,c));
+    edge_acc (euclideanDistance (c,a));
 
     // get plane defined by vertices
     Eigen::Hyperplane<float, 3> eigen_plane =
@@ -220,9 +220,9 @@ pcl::ProgressiveDensificationFilter<PointT>::densify (const typename pcl::PointC
     if (angle_thresh > max_angle_thresh) angle_thresh = max_angle_thresh;
   }
 
-  PCL_DEBUG ("Distance threshold at %.2f (%.2f, %.2f, %.2f)\n", dist_thresh, (ba::min)(dist_acc), ba::median(dist_acc), (ba::max)(dist_acc));
-  PCL_DEBUG ("Angle threshold at %.2f (%.2f, %.2f, %.2f)\n", rad2deg(angle_thresh), rad2deg((ba::min)(angle_acc)), rad2deg(ba::median(angle_acc)), rad2deg((ba::max)(angle_acc)));
-  PCL_DEBUG ("Edge lengths (%.2f, %.2f, %.2f)\n", (ba::min)(edge_acc), ba::median(edge_acc), (ba::max)(edge_acc));
+  PCL_DEBUG ("Distance threshold at %.2f (%.2f, %.2f, %.2f)\n", dist_thresh, (ba::min) (dist_acc), ba::median (dist_acc), (ba::max) (dist_acc));
+  PCL_DEBUG ("Angle threshold at %.2f (%.2f, %.2f, %.2f)\n", rad2deg (angle_thresh), rad2deg ((ba::min) (angle_acc)), rad2deg (ba::median (angle_acc)), rad2deg ((ba::max) (angle_acc)));
+  PCL_DEBUG ("Edge lengths (%.2f, %.2f, %.2f)\n", (ba::min) (edge_acc), ba::median (edge_acc), (ba::max) (edge_acc));
 
   PointIndicesPtr addtoground (new PointIndices);
   addtoground->indices = ground;
@@ -246,10 +246,10 @@ pcl::ProgressiveDensificationFilter<PointT>::densify (const typename pcl::PointC
     PointT c = tri_cloud->points[triangles.polygons[t].vertices[2]];
 
     Eigen::Vector3f edges;
-    edges[0] = euclideanDistance(a,b);
-    edges[1] = euclideanDistance(b,c);
-    edges[2] = euclideanDistance(c,a);
-    float weight = edges.maxCoeff() / 5.0f;
+    edges[0] = euclideanDistance (a,b);
+    edges[1] = euclideanDistance (b,c);
+    edges[2] = euclideanDistance (c,a);
+    float weight = edges.maxCoeff () / 5.0f;
     if (weight > 1.0f)
       weight = 1.0f;
     else
