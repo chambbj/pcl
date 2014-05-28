@@ -128,6 +128,20 @@ public:
     max_iters_ = max_iters;
   }
 
+  /** \brief Get the maximum number of nearest neighbors. */
+  inline int
+  getMaxNearestNeighbors () const
+  {
+    return (nnn_);
+  }
+
+  /** \brief Set the maximum number of nearest neighbors. */
+  inline void
+  setMaxNearestNeighbors (int nnn)
+  {
+    nnn_ = nnn;
+  }
+
   /** \brief This method launches the segmentation algorithm and returns indices of
     * points determined to be ground returns.
     * \param[out] ground indices of points determined to be ground returns.
@@ -149,9 +163,12 @@ protected:
   /** \brief Maximum number of iterations. */
   int max_iters_;
 
+  /** \brief Maximum number of nearest neighbors. */
+  int nnn_;
+
 private:
   virtual void
-  densify (const typename pcl::PointCloud<PointT>::ConstPtr &original, std::vector<int> &ground, float max_dist_thresh, float max_angle_thresh, bool adapt=false);
+  densify (const typename pcl::PointCloud<PointT>::ConstPtr &original, std::vector<int> &ground, bool adapt=false);
 };
 }
 

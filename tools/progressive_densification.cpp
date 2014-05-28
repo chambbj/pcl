@@ -62,6 +62,7 @@ float default_dist_thresh = 1.5f;
 float default_angle_thresh = 6.0f;
 int default_verbosity_level = 3;
 int default_max_iters = 3;
+int default_nnn = 100;
 
 void
 printHelp (int, char **argv)
@@ -79,6 +80,9 @@ printHelp (int, char **argv)
   print_info (")\n");
   print_info ("                     -max_iters X = maximum number of iterations (default: ");
   print_value ("%d", default_max_iters);
+  print_info (")\n");
+  print_info ("                     -nnn X = maximum number of nearest neighbors (default: ");
+  print_value ("%d", default_nnn);
   print_info (")\n");
   print_info ("                     -input_dir X  = batch process all PCD files found in input_dir\n");
   print_info ("                     -output_dir X = save the processed files from input_dir in this directory\n");
@@ -128,7 +132,7 @@ saveCloud (const string &filename, const Cloud &output)
 }
 
 void
-compute (ConstCloudPtr &input, Cloud &output, float resolution, float dist_thresh, float angle_thresh, int max_iters)
+compute (ConstCloudPtr &input, Cloud &output, float resolution, float dist_thresh, float angle_thresh, int max_iters, int nnn)
 {
   // Estimate
   TicToc tt;
@@ -144,6 +148,7 @@ compute (ConstCloudPtr &input, Cloud &output, float resolution, float dist_thres
   pdf.setDistThresh (dist_thresh);
   pdf.setAngleThresh (angle_thresh);
   pdf.setMaxIterations (max_iters);
+  pdf.setMaxNearestNeighbors (nnn);
   pdf.extract (ground->indices);
 
   ExtractIndices<PointType> extract;
@@ -160,7 +165,7 @@ compute (ConstCloudPtr &input, Cloud &output, float resolution, float dist_thres
 }
 
 int
-batchProcess (const vector<string> &pcd_files, string &output_dir, float resolution, float dist_thresh, float angle_thresh, int max_iters)
+batchProcess (const vector<string> &pcd_files, string &output_dir, float resolution, float dist_thresh, float angle_thresh, int max_iters, int nnn)
 {
   vector<string> st;
   for (size_t i = 0; i < pcd_files.size (); ++i)
@@ -172,7 +177,7 @@ batchProcess (const vector<string> &pcd_files, string &output_dir, float resolut
 
     // Perform the feature estimation
     Cloud output;
-    compute (cloud, output, resolution, dist_thresh, angle_thresh, max_iters);
+    compute (cloud, output, resolution, dist_thresh, angle_thresh, max_iters, nnn);
 
     // Prepare output file name
     string filename = pcd_files[i];
@@ -208,6 +213,7 @@ main (int argc, char** argv)
   float angle_thresh = default_angle_thresh;
   int verbosity_level = default_verbosity_level;
   int max_iters = default_max_iters;
+  int nnn = default_nnn;
   parse_argument (argc, argv, "-resolution", resolution);
   parse_argument (argc, argv, "-dist_thresh", dist_thresh);
   parse_argument (argc, argv, "-angle_thresh", angle_thresh);
@@ -217,6 +223,7 @@ main (int argc, char** argv)
 
   parse_argument (argc, argv, "-verbosity", verbosity_level);
   parse_argument (argc, argv, "-max_iters", max_iters);
+  parse_argument (argc, argv, "-nnn", nnn);
   string input_dir, output_dir;
   if (parse_argument (argc, argv, "-input_dir", input_dir) != -1)
   {
@@ -276,7 +283,7 @@ main (int argc, char** argv)
 
     // Perform the feature estimation
     Cloud output;
-    compute (cloud, output, resolution, dist_thresh, angle_thresh, max_iters);
+    compute (cloud, output, resolution, dist_thresh, angle_thresh, max_iters, nnn);
 
     // Save into the second file
     saveCloud (argv[p_file_indices[1]], output);
@@ -296,7 +303,7 @@ main (int argc, char** argv)
           PCL_INFO ("[Batch processing mode] Added %s for processing.\n", itr->path ().string ().c_str ());
         }
       }
-      batchProcess (pcd_files, output_dir, resolution, dist_thresh, angle_thresh, max_iters);
+      batchProcess (pcd_files, output_dir, resolution, dist_thresh, angle_thresh, max_iters, nnn);
     }
     else
     {

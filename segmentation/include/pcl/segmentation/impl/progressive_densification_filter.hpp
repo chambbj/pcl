@@ -74,7 +74,8 @@ pcl::ProgressiveDensificationFilter<PointT>::ProgressiveDensificationFilter () :
   resolution_ (15.0f),
   dist_thresh_ (1.5f),
   angle_thresh_ (6.0f),
-  max_iters_ (10)
+  max_iters_ (10),
+  nnn_ (100)
 {
 }
 
@@ -86,7 +87,7 @@ pcl::ProgressiveDensificationFilter<PointT>::~ProgressiveDensificationFilter ()
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 template <typename PointT> void
-pcl::ProgressiveDensificationFilter<PointT>::densify (const typename pcl::PointCloud<PointT>::ConstPtr &original, std::vector<int> &ground, float max_dist_thresh, float max_angle_thresh, bool adapt)
+pcl::ProgressiveDensificationFilter<PointT>::densify (const typename pcl::PointCloud<PointT>::ConstPtr &original, std::vector<int> &ground, bool adapt)
 {
   typename pcl::PointCloud<PointT>::Ptr input (new pcl::PointCloud<PointT>);
   pcl::copyPointCloud<PointT> (*original, ground, *input);
@@ -120,7 +121,7 @@ pcl::ProgressiveDensificationFilter<PointT>::densify (const typename pcl::PointC
 
   // Set typical values for the parameters
   gp3.setMu (2.5);
-  gp3.setMaximumNearestNeighbors (100);
+  gp3.setMaximumNearestNeighbors (nnn_);
   gp3.setMaximumSurfaceAngle (M_PI/4); // 45 degrees
   gp3.setMinimumAngle (M_PI/18); // 10 degrees
   gp3.setMaximumAngle (2*M_PI/3); // 120 degrees
@@ -202,8 +203,8 @@ pcl::ProgressiveDensificationFilter<PointT>::densify (const typename pcl::PointC
     }
   }
 
-  float dist_thresh = max_dist_thresh;
-  float angle_thresh = max_angle_thresh;
+  float dist_thresh = dist_thresh_;
+  float angle_thresh = angle_thresh_;
 
   if (adapt)
   {
@@ -213,8 +214,8 @@ pcl::ProgressiveDensificationFilter<PointT>::densify (const typename pcl::PointC
     if (!pcl_isnan (ba::median (angle_acc)))
       angle_thresh = ba::median (angle_acc);
 
-    if (dist_thresh > max_dist_thresh) dist_thresh = max_dist_thresh;
-    if (angle_thresh > max_angle_thresh) angle_thresh = max_angle_thresh;
+    if (dist_thresh > dist_thresh_) dist_thresh = dist_thresh_;
+    if (angle_thresh > angle_thresh_) angle_thresh = angle_thresh_;
   }
 
   PCL_DEBUG ("Distance threshold: %.2f (min/median/max = %.2f/%.2f/%.2f)\n", dist_thresh, (ba::min) (dist_acc), ba::median (dist_acc), (ba::max) (dist_acc));
@@ -224,6 +225,14 @@ pcl::ProgressiveDensificationFilter<PointT>::densify (const typename pcl::PointC
   PointIndicesPtr addtoground (new PointIndices);
   addtoground->indices = ground;
 
+  PointIndicesPtr mirrorpts (new PointIndices);
+
+  typename pcl::PointCloud<PointT>::Ptr mirror_cloud (new pcl::PointCloud<PointT>);
+  mirror_cloud->points.resize (original->points.size ());
+
+  int num_conventional_gnd = 0;
+
+  PCL_DEBUG ("Evaluating points...\n");
   for (int t = 0; t < triangles.polygons.size (); ++t)
   {
     // cropping input cloud to only those points within the first triangle
@@ -251,10 +260,6 @@ pcl::ProgressiveDensificationFilter<PointT>::densify (const typename pcl::PointC
       weight = 1.0f;
     else
       weight *= weight;
-    // find max dist ab, ac, bc
-    // angle weight = max dist / 5.0
-    // if weight < 1, weight *= weight
-    // angle_thresh *= weight
 
     // get plane defined by vertices
     Eigen::Hyperplane<float, 3> eigen_plane =
@@ -279,12 +284,12 @@ pcl::ProgressiveDensificationFilter<PointT>::densify (const typename pcl::PointC
 //    float bestdist = std::numeric_limits<float>::max ();
 //    float bestangle = std::numeric_limits<float>::max ();
 //    int bestidx = 0;
-    int potential_mirror_pts = 0;
     for (int i = 0; i < hidx.size (); ++i)
     {
       Eigen::Vector3f angles;
-      Eigen::Vector3f p3 = original->points[hidx[i]].getArray3fMap ();
-      Eigen::Vector4f p4 = original->points[hidx[i]].getArray4fMap ();
+      PointT p = original->points[hidx[i]];
+      Eigen::Vector3f p3 = p.getArray3fMap ();
+      Eigen::Vector4f p4 = p.getArray4fMap ();
       angles[0] = m_pi_over_two - getAngle3D (pn, p4-aa);
       angles[1] = m_pi_over_two - getAngle3D (pn, p4-bb);
       angles[2] = m_pi_over_two - getAngle3D (pn, p4-cc);
@@ -295,10 +300,10 @@ pcl::ProgressiveDensificationFilter<PointT>::densify (const typename pcl::PointC
         continue;
 
       // these should be identical, but they aren't in practice, but why
-      //if (dist < dist_thresh && angles[0] < angle_thresh && angles[1] < angle_thresh && angles[2] < angle_thresh)
       if (dist < dist_thresh && angles.maxCoeff () < (angle_thresh*weight))
       {
         addtoground->indices.push_back (hidx[i]);
+        num_conventional_gnd++;
         /*
         if (dist < bestdist && angles.maxCoeff() < bestangle)
         {
@@ -311,34 +316,131 @@ pcl::ProgressiveDensificationFilter<PointT>::densify (const typename pcl::PointC
       }
       else
       {
-        potential_mirror_pts++;
-        /*
         // check mirror point
         float da = (p4-aa).norm ();
         float db = (p4-bb).norm ();
         float dc = (p4-cc).norm ();
         if (da < db && da < dc)
         {
-          // closest to vertex a
-          // find the mirror point
-          // find the triangle it belongs to
-          // find that triangle's normal
-          // compute distance to triangle
-          // compute angles to vertices
+          PointT mirror_point;
+          mirror_point.x = 2.0f*a.x - p.x;
+          mirror_point.y = 2.0f*a.y - p.y;
+          mirror_point.z = 2.0f*a.z - p.z;
+          mirror_cloud->points[hidx[i]] = mirror_point;
         }
         else if (db < da && db < dc)
         {
+          PointT mirror_point;
+          mirror_point.x = 2.0f*b.x - p.x;
+          mirror_point.y = 2.0f*b.y - p.y;
+          mirror_point.z = 2.0f*b.z - p.z;
+          mirror_cloud->points[hidx[i]] = mirror_point;
         }
         else if (dc < da && dc < db)
         {
+          PointT mirror_point;
+          mirror_point.x = 2.0f*c.x - p.x;
+          mirror_point.y = 2.0f*c.y - p.y;
+          mirror_point.z = 2.0f*c.z - p.z;
+          mirror_cloud->points[hidx[i]] = mirror_point;
+        }
+      }
+    }
+//    if (newpoint)
+//      addtoground->indices.push_back (bestidx);
+  }
+  PCL_DEBUG ("Added %d convential points to ground.\n", num_conventional_gnd);
+  int num_mirror_gnd = 0;
+
+  // loop through mirror points and do the same thing
+  PCL_DEBUG ("Evaluating mirror points...\n");
+  for (int t = 0; t < triangles.polygons.size (); ++t)
+  {
+    // cropping input cloud to only those points within the first triangle
+    CropHull<PointT> ch;
+    ch.setInputCloud (mirror_cloud);
+    ch.setHullCloud (tri_cloud);
+    ch.setDim (2);
+    std::vector<Vertices> first_triangle;
+    first_triangle.push_back (triangles.polygons[t]);
+    ch.setHullIndices (first_triangle);
+    std::vector<int> hidx;
+    ch.filter (hidx);
+
+    // getting vertices of first triangle
+    PointT a = tri_cloud->points[triangles.polygons[t].vertices[0]];
+    PointT b = tri_cloud->points[triangles.polygons[t].vertices[1]];
+    PointT c = tri_cloud->points[triangles.polygons[t].vertices[2]];
+
+    Eigen::Vector3f edges;
+    edges[0] = euclideanDistance (a,b);
+    edges[1] = euclideanDistance (b,c);
+    edges[2] = euclideanDistance (c,a);
+    float weight = edges.maxCoeff () / 5.0f;
+    if (weight > 1.0f)
+      weight = 1.0f;
+    else
+      weight *= weight;
+
+    // get plane defined by vertices
+    Eigen::Hyperplane<float, 3> eigen_plane =
+      Eigen::Hyperplane<float, 3>::Through (a.getArray3fMap (),
+                                            b.getArray3fMap (),
+                                            c.getArray3fMap ());
+
+    Eigen::Vector4f pn;
+    pn[0] = eigen_plane.normal ()[0];
+    pn[1] = eigen_plane.normal ()[1];
+    pn[2] = eigen_plane.normal ()[2];
+    pn[3] = 0.0f;
+
+    if (pn[2] < 0)
+      pn *= -1;
+
+    Eigen::Vector4f aa = a.getArray4fMap ();
+    Eigen::Vector4f bb = b.getArray4fMap ();
+    Eigen::Vector4f cc = c.getArray4fMap ();
+
+//    bool newpoint = false;
+//    float bestdist = std::numeric_limits<float>::max ();
+//    float bestangle = std::numeric_limits<float>::max ();
+//    int bestidx = 0;
+    for (int i = 0; i < hidx.size (); ++i)
+    {
+      Eigen::Vector3f angles;
+      PointT p = mirror_cloud->points[hidx[i]];
+      Eigen::Vector3f p3 = p.getArray3fMap ();
+      Eigen::Vector4f p4 = p.getArray4fMap ();
+      angles[0] = m_pi_over_two - getAngle3D (pn, p4-aa);
+      angles[1] = m_pi_over_two - getAngle3D (pn, p4-bb);
+      angles[2] = m_pi_over_two - getAngle3D (pn, p4-cc);
+      float dist = eigen_plane.absDistance (p3);
+
+      // this happens when the current point is one of the vertices
+      if (pcl_isnan (angles[0]) || pcl_isnan (angles[1]) || pcl_isnan (angles[2]))
+        continue;
+
+      // these should be identical, but they aren't in practice, but why
+      if (dist < dist_thresh && angles.maxCoeff () < (angle_thresh*weight))
+      {
+        addtoground->indices.push_back (hidx[i]);
+        num_mirror_gnd++;
+        /*
+        if (dist < bestdist && angles.maxCoeff() < bestangle)
+        {
+          newpoint = true;
+          bestdist = dist;
+          bestangle = angles.maxCoeff();
+          bestidx = hidx[i];
         }
         */
       }
     }
-    PCL_DEBUG ("Triangle %d has %d potential mirror points.\n", t, potential_mirror_pts);
 //    if (newpoint)
 //      addtoground->indices.push_back (bestidx);
   }
+
+  PCL_DEBUG ("Added %d mirror points to ground.\n", num_mirror_gnd);
 
   ground = addtoground->indices;
 }
@@ -373,9 +475,9 @@ pcl::ProgressiveDensificationFilter<PointT>::extract (std::vector<int>& ground)
     int prev_points = ground.size ();
     PCL_DEBUG ("Densification starts with %d out of %d points labeled as ground (%.2f%%).\n", prev_points, cloud_in->points.size (), 100.0f*static_cast<float> (prev_points)/static_cast<float> (cloud_in->points.size ()));
     if (i == 0)
-      densify (cloud_in, ground, dist_thresh_, angle_thresh_, false); // should this be larger for the first iteration, e.g., 40deg?
+      densify (cloud_in, ground, false); // should this be larger for the first iteration, e.g., 40deg?
     else
-      densify (cloud_in, ground, dist_thresh_, angle_thresh_, true);
+      densify (cloud_in, ground, true);
     int new_pts = ground.size () - prev_points;
 
     PCL_DEBUG ("Iteration %d added %d points.\n", i+1, new_pts);
