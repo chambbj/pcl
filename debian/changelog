@@ -1,3 +1,9 @@
+pcl (1.7.2-2ppa1) precise; urgency=low
+
+  * Make sure eigen included in Depends.
+
+ -- Bradley J Chambers <brad.chambers@gmail.com>  Thu, 18 Jun 2015 15:53:46 -0400
+
 pcl (1.7.2-1ppa1) precise; urgency=low
 
   * Fix version number.
