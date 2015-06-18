@@ -1,3 +1,9 @@
+pcl (1.7.2-1ppa1) precise; urgency=low
+
+  * Fix version number.
+
+ -- Bradley J Chambers <brad.chambers@gmail.com>  Thu, 18 Jun 2015 12:02:44 -0400
+
 pcl (1.7.2) precise; urgency=low
 
   * Initial release.
