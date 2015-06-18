@@ -1,0 +1,15 @@
+Source: PCL
+Section: devel
+Priority: extra
+Maintainer: Bradley J Chambers <brad.chambers@gmail.com>
+Build-Depends: debhelper (>=9), gcc-4.8, g++-4.8, cmake, libeigen3-dev, libflann-dev, boost1.55, libvtk5-dev
+Standards-Version: 3.9.3
+Homepage: https://github.com/PointCloudLibrary/PCL
+
+Package: PCL
+Section: libs
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}
+Description: The Point Cloud Library (PCL) is a standalone, large scale, open project for 2D/3D image and point cloud processing.
+ This package was designed for use in PDAL's (http://pdal.io) continuous
+ integration. This Debian package is likely incomplete and/or incorrect.
