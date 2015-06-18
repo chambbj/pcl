@@ -2,7 +2,7 @@ Source: pcl
 Section: devel
 Priority: extra
 Maintainer: Bradley J Chambers <brad.chambers@gmail.com>
-Build-Depends: debhelper (>=9), gcc-4.8, g++-4.8, cmake, libeigen3-dev, libflann-dev, boost1.55, libvtk5-dev
+Build-Depends: debhelper (>=9), gcc-4.8, g++-4.8, cmake, libeigen3-dev, libflann-dev, libboost1.55-all-dev, libvtk5-dev
 Standards-Version: 3.9.3
 Homepage: https://github.com/PointCloudLibrary/PCL
 
