@@ -6,4 +6,14 @@
 override_dh_auto_configure:
 	CC=gcc-4.8 CXX=g++-4.8 dh_auto_configure -- \
 	   -DCMAKE_BUILD_TYPE=Release \
+           -DWITH_CUDA:BOOL=OFF \
+           -DWITH_FZAPI:BOOL=OFF \
+           -DWITH_LIBUSB:BOOL=OFF \
+           -DWITH_OPENNI:BOOL=OFF \
+           -DWITH_OPENNI2:BOOL=OFF \
+           -DWITH_PCAP:BOOL=OFF \
+           -DWITH_PNG:BOOL=OFF \
+           -DWITH_PXCAPI:BOOL=OFF \
+           -DWITH_QHULL:BOOL=OFF \
+           -DWITH_QT:BOOL=OFF \
            -DCMAKE_CXX_FLAGS="-std=c++11"

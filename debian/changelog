@@ -1,3 +1,9 @@
+pcl (1.7.2-3ppa1) precise; urgency=low
+
+  * Turn off all WITH_* CMake options. Add all libs to Depends
+
+ -- Bradley J Chambers <brad.chambers@gmail.com>  Thu, 18 Jun 2015 21:11:39 -0400
+
 pcl (1.7.2-2ppa1) precise; urgency=low
 
   * Make sure eigen included in Depends.
